@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Setup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f1f5f9; }
+        .card { background-color: #1e293b; border: 1px solid #334155; }
+        .input { background-color: #334155; border: 1px solid #475569; color: white; }
+        .label { color: #94a3b8; }
+        .button { background-color: #2563eb; }
+        .button:hover { background-color: #1d4ed8; }
+        .textarea { background-color: #334155; border: 1px solid #475569; color: white; font-family: monospace; }
+        .file-card { background-color: #27272a; }
+    </style>
+</head>
+<body class="p-4 md:p-6 lg:p-8 max-w-4xl mx-auto">
+
+    <header class="mb-8">
+        <h1 class="text-3xl font-bold text-blue-400">Agent Setup & Configuration</h1>
+        <p class="text-slate-400 mt-2">
+            Fill out your details below. After submitting, you will be given two JSON files. 
+            <strong>You must save them manually</strong> into the `personal_details/` directory of this project.
+        </p>
+    </header>
+
+    <form id="setup-form">
+        <!-- Personal Details -->
+        <div class="card p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Your Personal Details</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="label block text-sm mb-1" for="full-name">Full Name</label>
+                    <input type="text" id="full-name" class="input w-full p-2 rounded" placeholder="e.g., Ankur Kumar">
+                </div>
+                <div>
+                    <label class="label block text-sm mb-1" for="email">Email Address</label>
+                    <input type="email" id="email" class="input w-full p-2 rounded" placeholder="e.g., ankur.k@example.com">
+                </div>
+                <div>
+                    <label class="label block text-sm mb-1" for="phone">Phone</label>
+                    <input type="tel" id="phone" class="input w-full p-2 rounded" placeholder="e.g., +91 9876543210">
+                </div>
+                 <div>
+                    <label class="label block text-sm mb-1" for="experience">Years of Experience</label>
+                    <input type="number" id="experience" class="input w-full p-2 rounded" placeholder="e.g., 5">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="label block text-sm mb-1" for="linkedin">LinkedIn Profile URL</label>
+                    <input type="url" id="linkedin" class="input w-full p-2 rounded" placeholder="https://linkedin.com/in/yourprofile">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="label block text-sm mb-1" for="portfolio">Portfolio/Website URL</label>
+                    <input type="url" id="portfolio" class="input w-full p-2 rounded" placeholder="https://your-portfolio.com">
+                </div>
+            </div>
+        </div>
+
+        <!-- Skills Section -->
+        <div class="card p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Skills</h2>
+            <div id="skills-container" class="space-y-3"></div>
+            <button type="button" id="add-skill-btn" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded text-xs">+ Add Skill</button>
+        </div>
+
+        <!-- Projects Section -->
+        <div class="card p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Projects</h2>
+            <div id="projects-container" class="space-y-4"></div>
+            <button type="button" id="add-project-btn" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded text-xs">+ Add Project</button>
+        </div>
+
+        <!-- Education Section -->
+        <div class="card p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Education</h2>
+            <div id="education-container" class="space-y-3"></div>
+            <button type="button" id="add-education-btn" class="mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded text-xs">+ Add Education</button>
+        </div>
+
+        <!-- Job Preferences -->
+        <div class="card p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-xl font-semibold mb-4">Your Job Preferences</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                    <label class="label block text-sm mb-1" for="job-titles">Target Job Titles</label>
+                    <input type="text" id="job-titles" class="input w-full p-2 rounded" placeholder="e.g., Software Engineer, Data Scientist">
+                </div>
+                 <div>
+                    <label class="label block text-sm mb-1" for="locations">Preferred Locations</label>
+                    <input type="text" id="locations" class="input w-full p-2 rounded" placeholder="e.g., Bangalore, Remote">
+                </div>
+                <div>
+                    <label class="label block text-sm mb-1" for="current-ctc">Current CTC</label>
+                    <input type="text" id="current-ctc" class="input w-full p-2 rounded" placeholder="e.g., 12LPA or 15">
+                </div>
+                <div>
+                    <label class="label block text-sm mb-1" for="expected-ctc">Expected CTC</label>
+                    <input type="text" id="expected-ctc" class="input w-full p-2 rounded" placeholder="e.g., 15LPA or 20">
+                </div>
+                <div>
+                    <label class="label block text-sm mb-1" for="job-type">Job Type</label>
+                    <select id="job-type" class="input w-full p-2 rounded">
+                        <option>Full-time</option>
+                        <option>Part-time</option>
+                        <option>Contract</option>
+                        <option>Internship</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="label block text-sm mb-1" for="work-preference">Work Preference</label>
+                    <select id="work-preference" class="input w-full p-2 rounded">
+                        <option>On-site</option>
+                        <option>Hybrid</option>
+                        <option>Remote</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="button w-full p-3 rounded font-bold text-lg transition">Generate Configuration Files</button>
+    </form>
+
+    <!-- Output Section -->
+    <div id="output-section" class="hidden mt-8">
+         <div class="file-card p-4 rounded-lg mb-4">
+            <h3 class="font-semibold text-lg mb-2">1. Save as `user_details.json`</h3>
+            <p class="text-sm text-slate-400 mb-2">Save this file in the `personal_details` folder.</p>
+            <textarea id="user-details-output" rows="12" class="textarea w-full p-2 rounded" readonly></textarea>
+        </div>
+        <div class="file-card p-4 rounded-lg">
+            <h3 class="font-semibold text-lg mb-2">2. Save as `job_preferences.json`</h3>
+             <p class="text-sm text-slate-400 mb-2">Save this file in the `personal_details` folder.</p>
+            <textarea id="job-preferences-output" rows="8" class="textarea w-full p-2 rounded" readonly></textarea>
+        </div>
+    </div>
+
+    <script>
+        // --- Dynamic Input Management ---
+        function setupDynamicSection(containerId, addButtonId, createTemplate) {
+            const container = document.getElementById(containerId);
+            const addButton = document.getElementById(addButtonId);
+
+            const addEntry = () => {
+                const entryDiv = document.createElement('div');
+                entryDiv.innerHTML = createTemplate();
+                container.appendChild(entryDiv.firstElementChild);
+            };
+
+            addButton.addEventListener('click', addEntry);
+            container.addEventListener('click', function(event) {
+                if (event.target.classList.contains('remove-btn')) {
+                    event.target.closest('.dynamic-entry').remove();
+                }
+            });
+            addEntry(); // Add one entry by default
+        }
+
+        // --- Templates ---
+        const skillTemplate = () => `
+            <div class="dynamic-entry flex items-center space-x-2">
+                <input type="text" class="input w-1/2 p-2 rounded skill-name" placeholder="Skill (e.g., React)">
+                <input type="number" class="input w-1/4 p-2 rounded skill-yoe" placeholder="YOE">
+                <button type="button" class="text-red-500 hover:text-red-400 font-bold remove-btn">✕</button>
+            </div>`;
+
+        const projectTemplate = () => `
+            <div class="dynamic-entry border-t border-slate-700 pt-4">
+                <div class="flex justify-between items-center mb-2">
+                    <input type="text" class="input w-full p-2 rounded project-name" placeholder="Project Name">
+                    <button type="button" class="ml-2 text-red-500 hover:text-red-400 font-bold remove-btn">✕</button>
+                </div>
+                <div class="space-y-1 ml-4">
+                    <input type="text" class="input w-full p-1 rounded text-sm project-bullet" placeholder="Bullet point 1">
+                    <input type="text" class="input w-full p-1 rounded text-sm project-bullet" placeholder="Bullet point 2">
+                    <input type="text" class="input w-full p-1 rounded text-sm project-bullet" placeholder="Bullet point 3">
+                </div>
+            </div>`;
+
+        const educationTemplate = () => `
+            <div class="dynamic-entry border-t border-slate-700 pt-4">
+                 <div class="flex justify-between items-center mb-2">
+                    <input type="text" class="input w-full p-2 rounded edu-degree" placeholder="Degree (e.g., B.Tech in CSE)">
+                    <button type="button" class="ml-2 text-red-500 hover:text-red-400 font-bold remove-btn">✕</button>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <input type="text" class="input p-2 rounded edu-university" placeholder="University/College">
+                    <input type="number" class="input p-2 rounded edu-year" placeholder="Year of Completion">
+                    <input type="text" class="input p-2 rounded edu-score" placeholder="CGPA / Percentage (Optional)">
+                </div>
+            </div>`;
+
+        // --- Initialize Dynamic Sections ---
+        setupDynamicSection('skills-container', 'add-skill-btn', skillTemplate);
+        setupDynamicSection('projects-container', 'add-project-btn', projectTemplate);
+        setupDynamicSection('education-container', 'add-education-btn', educationTemplate);
+
+        // --- Form Submission ---
+        document.getElementById('setup-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            // --- Helper function to parse CTC ---
+            const parseCTC = (ctcString) => (parseFloat(ctcString.replace(/lpa/i, '')) || 0) * 100000;
+
+            // --- Process Dynamic Sections ---
+            const skills = Array.from(document.querySelectorAll('#skills-container .dynamic-entry')).map(entry => ({
+                skill: entry.querySelector('.skill-name').value.trim(),
+                yoe: parseInt(entry.querySelector('.skill-yoe').value, 10)
+            })).filter(s => s.skill && !isNaN(s.yoe));
+
+            const projects = Array.from(document.querySelectorAll('#projects-container .dynamic-entry')).map(entry => ({
+                name: entry.querySelector('.project-name').value.trim(),
+                description: Array.from(entry.querySelectorAll('.project-bullet')).map(b => b.value.trim()).filter(Boolean)
+            })).filter(p => p.name);
+
+            const education = Array.from(document.querySelectorAll('#education-container .dynamic-entry')).map(entry => ({
+                degree: entry.querySelector('.edu-degree').value.trim(),
+                university: entry.querySelector('.edu-university').value.trim(),
+                year: parseInt(entry.querySelector('.edu-year').value, 10),
+                score: entry.querySelector('.edu-score').value.trim() || null
+            })).filter(e => e.degree && e.university && !isNaN(e.year));
+
+            // --- Process User Details ---
+            const userDetails = {
+                fullName: document.getElementById('full-name').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                linkedin: document.getElementById('linkedin').value,
+                portfolio: document.getElementById('portfolio').value,
+                experience: parseInt(document.getElementById('experience').value, 10) || 0,
+                skills,
+                projects,
+                education
+            };
+
+            // --- Process Job Preferences ---
+            const jobPreferences = {
+                targetTitles: document.getElementById('job-titles').value.split(',').map(s => s.trim()).filter(Boolean),
+                preferredLocations: document.getElementById('locations').value.split(',').map(s => s.trim()).filter(Boolean),
+                currentCTC: parseCTC(document.getElementById('current-ctc').value),
+                expectedCTC: parseCTC(document.getElementById('expected-ctc').value),
+                jobType: document.getElementById('job-type').value,
+                workPreference: document.getElementById('work-preference').value
+            };
+            
+            // --- Display JSON Output ---
+            document.getElementById('user-details-output').value = JSON.stringify(userDetails, null, 4);
+            document.getElementById('job-preferences-output').value = JSON.stringify(jobPreferences, null, 4);
+
+            document.getElementById('output-section').classList.remove('hidden');
+            window.scrollTo(0, document.body.scrollHeight);
+        });
+    </script>
+</body>
+</html>
+</body>
+</html>

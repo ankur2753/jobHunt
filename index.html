@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Application Agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f1f5f9; }
+        .card { background-color: #1e293b; border: 1px solid #334155; }
+        .table-header { background-color: #334155; }
+    </style>
+</head>
+<body class="p-4 md:p-6 lg:p-8">
+
+    <header class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold text-blue-400">Job Application Agent</h1>
+        <button onclick="loadDashboardData()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline -ml-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.899 2.186l-2.004.811a5.002 5.002 0 00-8.23-1.803V7a1 1 0 01-2 0V3a1 1 0 011-1zm1.101 11.899a7.002 7.002 0 01-2.186-11.9l.81-2.004a5.002 5.002 0 001.803 8.23H13a1 1 0 110 2H5.101zM15 17a1 1 0 01-1-1v-2.101a7.002 7.002 0 01-11.899-2.186l2.004-.811a5.002 5.002 0 008.23 1.803V13a1 1 0 112 0v3a1 1 0 01-1 1z" clip-rule="evenodd" />
+            </svg>
+            Refresh
+        </button>
+    </header>
+
+    <!-- Stats Cards -->
+    <div id="stats-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+        <div class="card p-4 rounded-xl shadow-lg text-center"><h3 class="text-sm uppercase text-slate-400">Total Applied</h3><p id="total-applied" class="text-3xl font-bold">0</p></div>
+        <div class="card p-4 rounded-xl shadow-lg text-center"><h3 class="text-sm uppercase text-slate-400">Success</h3><p id="total-success" class="text-3xl font-bold text-green-400">0</p></div>
+        <div class="card p-4 rounded-xl shadow-lg text-center"><h3 class="text-sm uppercase text-slate-400">Failure</h3><p id="total-failure" class="text-3xl font-bold text-red-400">0</p></div>
+        <div class="card p-4 rounded-xl shadow-lg text-center"><h3 class="text-sm uppercase text-slate-400">Cold Reachouts</h3><p id="total-cold-reachouts" class="text-3xl font-bold">0</p></div>
+        <div class="card p-4 rounded-xl shadow-lg text-center"><h3 class="text-sm uppercase text-slate-400">LLM Calls</h3><p id="total-llm-calls" class="text-3xl font-bold">0</p></div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card p-4 rounded-xl mb-8 shadow-lg">
+        <canvas id="applicationsChart" height="120"></canvas>
+    </div>
+
+    <!-- Recent Activity Table -->
+    <div class="card p-4 rounded-xl shadow-lg">
+        <h2 class="text-xl font-semibold mb-4">Recent Activity</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="table-header">
+                    <tr>
+                        <th class="p-2">Date</th>
+                        <th class="p-2">Company</th>
+                        <th class="p-2">Title</th>
+                        <th class="p-2">Status</th>
+                        <th class="p-2">LLM Used</th>
+                    </tr>
+                </thead>
+                <tbody id="activity-log">
+                    <!-- Rows will be inserted by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const LOG_FILE = './logs/job_applications.log.csv';
+        let chart;
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch(LOG_FILE);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const text = await response.text();
+                return text;
+            } catch (error) {
+                console.error("Could not fetch log file:", error);
+                document.getElementById('activity-log').innerHTML = `<tr><td colspan="5" class="text-center p-4">Could not load log file. Does './logs/job_applications.log.csv' exist?</td></tr>`;
+                return null;
+            }
+        }
+
+        function parseCSV(text) {
+            const lines = text.trim().split('\\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            const data = lines.slice(1).map(line => {
+                const values = line.split(',').map(v => v.trim());
+                let obj = {};
+                headers.forEach((header, index) => {
+                    obj[header] = values[index];
+                });
+                return obj;
+            });
+            return data;
+        }
+
+        function updateDashboard(data) {
+            if (!data || data.length === 0) return;
+            
+            // Calculate stats
+            const totalApplied = data.length;
+            const totalSuccess = data.filter(d => d.status === 'success').length;
+            const totalFailure = data.filter(d => d.status === 'failure').length;
+            const totalColdReachouts = data.filter(d => d.outreach_type === 'cold').length;
+            const totalLlmCalls = data.filter(d => d.llm_called === 'true').length;
+
+            // Update stat cards
+            document.getElementById('total-applied').innerText = totalApplied;
+            document.getElementById('total-success').innerText = totalSuccess;
+            document.getElementById('total-failure').innerText = totalFailure;
+            document.getElementById('total-cold-reachouts').innerText = totalColdReachouts;
+            document.getElementById('total-llm-calls').innerText = totalLlmCalls;
+
+            // Update activity table
+            const activityLog = document.getElementById('activity-log');
+            activityLog.innerHTML = '';
+            [...data].reverse().slice(0, 10).forEach(log => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-slate-700 hover:bg-slate-700/50';
+                row.innerHTML = `
+                    <td class="p-2">${log.date}</td>
+                    <td class="p-2">${log.company}</td>
+                    <td class="p-2">${log.title}</td>
+                    <td class="p-2 ${log.status === 'success' ? 'text-green-400' : 'text-red-400'}">${log.status}</td>
+                    <td class="p-2">${log.llm_called === 'true' ? 'Yes' : 'No'}</td>
+                `;
+                activityLog.appendChild(row);
+            });
+            
+            // Update chart
+            renderChart(data);
+        }
+
+        function renderChart(data) {
+            const ctx = document.getElementById('applicationsChart').getContext('2d');
+            
+            const applicationsByDate = data.reduce((acc, curr) => {
+                acc[curr.date] = (acc[curr.date] || 0) + 1;
+                return acc;
+            }, {});
+
+            const sortedDates = Object.keys(applicationsByDate).sort((a, b) => new Date(a) - new Date(b));
+
+            if(chart) chart.destroy();
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [{
+                        label: 'Applications per Day',
+                        data: sortedDates.map(date => applicationsByDate[date]),
+                        borderColor: '#60a5fa',
+                        tension: 0.1,
+                        fill: true,
+                        backgroundColor: 'rgba(96, 165, 250, 0.1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { 
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: '#334155' },
+                            ticks: { precision: 0 } 
+                        },
+                        x: {
+                            grid: { color: '#334155' }
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function loadDashboardData() {
+            const logText = await fetchLogs();
+            if (logText) {
+                const data = parseCSV(logText);
+                updateDashboard(data);
+            }
+        }
+
+        // Initial load
+        window.onload = loadDashboardData;
+
+    </script>
+</body>
+</html>
