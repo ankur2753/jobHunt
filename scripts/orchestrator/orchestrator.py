@@ -10,6 +10,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.job_scraping.linkedin_job_apply import LinkedInJobApply
+from scripts.job_scraping.linkedin_job_scraper import LinkedInJobScraper
 
 # Define paths
 COMMON_STUFF_DIR = Path(__file__).parent.parent / "common_stuff"
@@ -148,8 +149,9 @@ async def main():
         print("What would you like to do?")
         print("1. Send cold messages")
         print("2. Apply on job portals")
+        print("3. Scrape jobs posted in last 24 hours")
 
-        choice = input("Enter your choice (1 or 2): ")
+        choice = input("Enter your choice (1, 2 or 3): ")
 
         if choice == '1':
             print("Starting the process to send cold messages...")
@@ -189,8 +191,30 @@ async def main():
                 await applicator.apply_to_jobs(job_title, location)
             else:
                 print("Job application for this portal is not yet implemented.")
+        elif choice == '3':
+            print("Starting the process to scrape recent job links...")
+            if website_choice == '1':
+                # Load job preferences and user details to get default values
+                project_root = Path(__file__).parent.parent.parent
+                job_prefs_path = project_root / "personal_details" / "job_prefrences.json"
+
+                if not job_prefs_path.exists():
+                    print(f"⚠️ Missing job preferences file.")
+                    print(f"Ensure 'job_prefrences.json' exists in the 'personal_details/' directory.")
+                    return
+
+                with open(job_prefs_path, 'r') as f:
+                    job_prefs = json.load(f)
+
+                job_title = input(f"Enter job title to search for (default: {job_prefs.get('targetTitles', ['Software Engineer'])[0]}): ").strip() or job_prefs.get('targetTitles', ['Software Engineer'])[0]
+                location = input(f"Enter location (default: {job_prefs.get('preferredLocations', ['Remote'])[0]}): ").strip() or job_prefs.get('preferredLocations', ['Remote'])[0]
+                
+                scraper = LinkedInJobScraper(linkedin.page, job_title, location)
+                await scraper.scrape_jobs()
+            else:
+                print("Job scraping for this portal is not yet implemented.")
         else:
-            print("Invalid choice. Please enter 1 or 2.")
+            print("Invalid choice. Please enter 1, 2, or 3.")
 
     finally:
         if linkedin and linkedin.browser:
