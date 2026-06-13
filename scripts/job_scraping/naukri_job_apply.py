@@ -337,97 +337,67 @@ class NaukriJobApply:
                     apply_result = await self.click_bulk_apply_button()
                     
                     if apply_result['success']:
-                        logger.info("✅ Bulk apply clicked. Side panel should appear for form filling.")
-                        
-                        # Step 3: Fill form for bulk-selected jobs
-                        # The form will be for each selected job (depending on Naukri implementation)
-                        logger.info("⏳ Waiting for side panel form to load...")
-                        
+                        logger.info("✅ Bulk apply clicked. Side panel chatbot should appear.")
+
+                        # Naukri runs ONE continuous chatbot drawer for ALL selected
+                        # jobs — answer questions, click Save, next question appears,
+                        # until the drawer closes. So we drive a single conversational
+                        # loop rather than a per-job static form.
                         form_filler = NaukriFormFiller(
                             self.page,
                             self.vector_db,
-                            confidence_threshold=0.70,
+                            confidence_threshold=0.60,
                             enable_logging=True,
                             enable_selector_validation=False
                         )
-                        
-                        # For each selected job, fill the form
-                        for job_idx, job_title in enumerate(select_result['selected_titles'], 1):
-                            try:
-                                logger.info(f"\n📋 [{job_idx}/{len(select_result['selected_titles'])}] Processing: {job_title}")
-                                
-                                # Wait for side panel form to appear
-                                panel_appeared = await form_filler.wait_for_side_panel_chatbot(timeout_ms=25000)
-                                
-                                if not panel_appeared:
-                                    logger.warning(f"⚠️  Side panel did not appear for {job_title}")
-                                    results['skipped'] += 1
-                                    results['details'].append({
-                                        'job_title': job_title,
-                                        'status': 'skipped',
-                                        'message': 'Side panel did not appear'
-                                    })
-                                    results['total_attempted'] += 1
-                                    continue
-                                
-                                # Detect questions in the side panel
-                                questions = await form_filler.detect_chatbot_questions_in_panel()
-                                
-                                if not questions:
-                                    logger.info(f"No questions detected in panel for {job_title}")
-                                    # Still need to click Save to move to next job
-                                    saved = await form_filler.click_chatbot_save_button()
-                                    if saved:
-                                        logger.info(f"✅ Moved to next job")
-                                        results['successful'] += 1
-                                    else:
-                                        logger.warning(f"⚠️  Could not click Save button")
-                                        results['skipped'] += 1
-                                    results['total_attempted'] += 1
-                                    continue
-                                
-                                logger.info(f"Found {len(questions)} questions to answer")
-                                
-                                # Fill the form using vector DB
-                                fill_stats = await form_filler.fill_chatbot_form_for_job(
-                                    job_title=job_title,
-                                    questions=questions,
-                                    allow_human_input=True  # Prompt user if confidence < 0.70
-                                )
-                                
-                                # Click Save button to confirm this job and move to next
-                                saved = await form_filler.click_chatbot_save_button()
-                                
-                                if saved:
-                                    results['successful'] += 1
-                                    logger.info(f"✅ Form completed and saved for {job_title}")
-                                    results['details'].append({
-                                        'job_title': job_title,
-                                        'status': 'completed',
-                                        'message': f'Answered {fill_stats["questions_answered"]}/{fill_stats["total_questions"]} questions',
-                                        'stats': fill_stats
-                                    })
-                                else:
-                                    results['failed'] += 1
-                                    logger.warning(f"⚠️  Could not click Save button for {job_title}")
-                                    results['details'].append({
-                                        'job_title': job_title,
-                                        'status': 'failed',
-                                        'message': 'Could not click Save button',
-                                        'stats': fill_stats
-                                    })
-                                
-                                results['total_attempted'] += 1
-                                
-                            except Exception as e:
-                                logger.error(f"Error processing {job_title}: {str(e)}")
-                                results['failed'] += 1
-                                results['total_attempted'] += 1
+
+                        selected_titles = select_result['selected_titles']
+                        panel_appeared = await form_filler.wait_for_side_panel_chatbot(timeout_ms=25000)
+
+                        if not panel_appeared:
+                            logger.warning("⚠️  Chatbot side panel did not appear after Apply")
+                            results['failed'] = jobs_selected
+                            results['total_attempted'] = jobs_selected
+                            for t in selected_titles:
                                 results['details'].append({
-                                    'job_title': job_title,
-                                    'status': 'failed',
-                                    'message': f'Error: {str(e)}'
+                                    'job_title': t, 'status': 'failed',
+                                    'message': 'Chatbot side panel did not appear'
                                 })
+                        else:
+                            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            review_log = str(Path('logs') / f'naukri_chatbot_review_{ts}.json')
+
+                            conv = await form_filler.run_chatbot_conversation(
+                                allow_human_input=self.enable_human_fallback,
+                                review_log_path=review_log,
+                            )
+                            results['chatbot_stats'] = conv
+                            results['total_attempted'] = jobs_selected
+
+                            # The drawer closing means the whole batch was submitted.
+                            status = 'completed' if conv['completed'] else 'partial'
+                            if conv['completed']:
+                                results['successful'] = jobs_selected
+                                self.jobs_applied += jobs_selected
+                            else:
+                                # Drawer didn't fully close — answered some, treat as partial.
+                                results['successful'] = jobs_selected if conv['answered'] else 0
+                                results['failed'] = 0 if conv['answered'] else jobs_selected
+
+                            for t in selected_titles:
+                                results['details'].append({
+                                    'job_title': t,
+                                    'status': status,
+                                    'message': (
+                                        f"{conv['answered']} questions answered across batch "
+                                        f"({conv['guessed']} guessed, {conv['prompted']} prompted); "
+                                        f"drawer_completed={conv['completed']}"
+                                    ),
+                                })
+                            logger.info(
+                                f"✅ Chatbot batch done: completed={conv['completed']}, "
+                                f"answered={conv['answered']}, review={len(conv['review'])}"
+                            )
                     else:
                         logger.error(f"❌ Failed to click bulk apply button: {apply_result['errors']}")
                         results['failed'] = jobs_selected

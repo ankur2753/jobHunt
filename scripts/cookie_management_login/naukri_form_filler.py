@@ -79,8 +79,8 @@ class NaukriFormFiller:
         'company_name': '[data-qa="jobDetailCompany"], [data-qa="companyName"], .companyName, [data-qa="jobCardCompanyName"]',
         
         # Apply & Form
-        'apply_button': 'button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button:has-text("Apply")',
-        'chatbot_form_container': '.chatbot_DrawerContentWrapper, .filler-container, .customFields, [data-qa="customFields"], [role="form"], .application-form, .chat-container, .chatbot, .chat-window, .nI-chat-container',
+        'apply_button': 'button.multi-apply-button, button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button:has-text("Apply")',
+        'chatbot_form_container': '.chatbot_DrawerContentWrapper',
         'form_fields': 'input, select, textarea, [role="combobox"], [role="radio"]',
         
         # Submit & Navigation
@@ -97,6 +97,12 @@ class NaukriFormFiller:
         'error_message': '.error, [role="alert"], .validation-error, .form-error, [data-qa*="error"]',
     }
     
+    # Root of the Naukri chatbot side panel. EVERY chatbot query MUST be scoped to
+    # this drawer — querying page-wide picks up the search/experience/location inputs
+    # on the recommended-jobs page sitting behind the drawer, which steals focus and
+    # closes the panel (the original "clicks outside the box" bug).
+    DRAWER = '.chatbot_DrawerContentWrapper'
+
     # Constants (with enhanced timeout for form loading)
     FORM_LOAD_TIMEOUT = 20000  # 20 seconds (increased from 15)
     POPUP_CHECK_INTERVAL = 2000  # 2 seconds
@@ -107,7 +113,7 @@ class NaukriFormFiller:
         self,
         page: Page,
         vector_db_manager: VectorDBManager,
-        confidence_threshold: float = 0.70,  # Naukri-specific (stricter than default 0.65)
+        confidence_threshold: float = 0.60,  # semantic-match threshold (>=0.6 auto-answer + log)
         enable_logging: bool = True,
         enable_selector_validation: bool = False
     ):
@@ -257,218 +263,27 @@ class NaukriFormFiller:
         On failure: Launches Playwright Inspector (codegen) for manual recording.
         """
         stats = ChatbotFormFillerStats()
-        last_answered_question = None
-        question_count = 0
-        safety_limit = max_questions or 25
-        stall_count = 0
-        MAX_STALLS = 5
 
-        while question_count < safety_limit:
-            try:
-                await asyncio.sleep(1.5)  # let chatbot animate after previous answer
+        if dry_run:
+            state = await self._detect_current_chatbot_state()
+            if state.get('question'):
+                stats.total_questions = 1
+                logger.info(f"DRY RUN: detected question → {state['question'][:60]}")
+            return stats
 
-                question_text, chip_options, text_input, is_submit_ready = \
-                    await self._detect_current_chatbot_state()
+        # Delegate to the single conversational driver (drawer-scoped, handles
+        # radio / checkbox / free-text / yes-no, clicks Save to advance).
+        conv = await self.run_chatbot_conversation(
+            allow_human_input=allow_human_input,
+            max_steps=(max_questions or 40),
+        )
 
-                # All questions answered — submit button is now available
-                if is_submit_ready:
-                    logger.info("✅ Submit button detected — chatbot form fully answered")
-                    break
-
-                # No question visible yet — wait a bit more
-                if not question_text:
-                    stall_count += 1
-                    if stall_count >= MAX_STALLS:
-                        logger.warning("⚠️  No question detected after multiple retries, stopping loop")
-                        break
-                    await asyncio.sleep(2)
-                    continue
-
-                # Same question as before — chatbot hasn't advanced yet
-                if question_text == last_answered_question:
-                    stall_count += 1
-                    if stall_count >= MAX_STALLS:
-                        logger.warning(f"⚠️  Stuck on question: {question_text[:60]}")
-                        if allow_human_input:
-                            await asyncio.to_thread(
-                                input,
-                                "\n🤖 STUCK — Please interact with the browser manually, then press Enter: "
-                            )
-                            stall_count = 0  # reset after human help
-                        else:
-                            break
-                    await asyncio.sleep(2)
-                    continue
-
-                # New question arrived
-                stall_count = 0
-                question_count += 1
-                stats.total_questions += 1
-                last_answered_question = question_text
-
-                # Query vector DB
-                candidates = self.vector_db.answer_question_with_candidates(
-                    question_text, n_candidates=3, confidence_threshold=0.0
-                )
-                candidate = (
-                    candidates[0]
-                    if candidates and candidates[0].confidence >= self.confidence_threshold
-                    else None
-                )
-                best_guess = candidates[0] if candidates else None
-
-                # Print current state
-                print("\n" + "="*70)
-                print(f"🤖 BOT: {question_text}")
-                if chip_options:
-                    print(f"   Options: {[t for t, _ in chip_options]}")
-                print("-"*70)
-                if candidates:
-                    print("🧠 VECTOR DB:")
-                    for idx, c in enumerate(candidates[:3], 1):
-                        mark = "✅ AUTO" if candidate and c == candidate else "➖"
-                        print(f"  {idx}. [{c.source_key}] {c.answer_text[:50]} | {c.confidence:.2f} {mark}")
-                else:
-                    print("  (No vector DB match)")
-                print("="*70)
-
-                if dry_run:
-                    logger.info("  DRY RUN: skipping fill")
-                    continue
-
-                # Determine answer
-                answer = None
-
-                if candidate:
-                    answer = candidate.answer_text
-
-                elif allow_human_input and best_guess:
-                    user_in = (await asyncio.to_thread(
-                        input,
-                        f"\n❓ {question_text}\n"
-                        f"   Suggestion: {best_guess.answer_text} ({best_guess.confidence:.2f})\n"
-                        f"   Press Enter to use suggestion, or type a new answer: "
-                    )).strip()
-                    answer = user_in if user_in else best_guess.answer_text
-                    self.session.manual_answers[question_text] = answer
-                    try:
-                        self.vector_db.store_answered_question(
-                            question_text, answer, category='learned_answers', tags=['naukri']
-                        )
-                    except Exception:
-                        pass
-
-                elif allow_human_input:
-                    user_in = (await asyncio.to_thread(
-                        input,
-                        f"\n❓ {question_text}\n"
-                        f"   No match found. Type answer, or fill in browser and press Enter: "
-                    )).strip()
-                    if user_in:
-                        answer = user_in
-                        self.session.manual_answers[question_text] = answer
-                        try:
-                            self.vector_db.store_answered_question(
-                                question_text, answer, category='learned_answers', tags=['naukri']
-                            )
-                        except Exception:
-                            pass
-                    else:
-                        logger.info("→ No answer given, skipping")
-                        stats.skipped += 1
-                        last_answered_question = None  # re-detect next iteration
-                        continue
-
-                if not answer:
-                    stats.skipped += 1
-                    continue
-
-                # Fill the answer — wrapped in try-except for codegen fallback
-                filled = False
-
-                if chip_options:
-                    try:
-                        best_chip = self._pick_best_chip(answer, chip_options)
-                        if best_chip:
-                            chip_text, chip_elem = best_chip
-                            logger.info(f"  Clicking chip: '{chip_text}'")
-                            await chip_elem.click()
-                            await asyncio.sleep(0.5)
-                            filled = True
-                        else:
-                            logger.warning(
-                                f"  No chip matched '{answer}' among {[t for t, _ in chip_options]}"
-                            )
-                            if allow_human_input:
-                                await asyncio.to_thread(
-                                    input,
-                                    f"\n⚠️  Could not match '{answer}' to any option.\n"
-                                    f"   Options: {[t for t, _ in chip_options]}\n"
-                                    f"   Please click the right option in the browser, then press Enter: "
-                                )
-                                filled = True
-                            else:
-                                stats.failed += 1
-                                continue
-                    except PlaywrightTimeoutError as e:
-                        logger.error(f"  ❌ TIMEOUT while clicking chip: {e}")
-                        await self._launch_codegen_fallback()
-                        filled = True  # Assume user fixed it via codegen
-                    except Exception as e:
-                        logger.error(f"  ❌ Error while clicking chip: {e}")
-                        if isinstance(e, PlaywrightTimeoutError):
-                            await self._launch_codegen_fallback()
-                        filled = False
-
-                elif text_input:
-                    try:
-                        logger.info(f"  Typing: '{answer}'")
-                        await text_input.fill(answer)
-                        await asyncio.sleep(0.3)
-                        await text_input.press('Enter')
-                        filled = True
-                    except PlaywrightTimeoutError as e:
-                        logger.error(f"  ❌ TIMEOUT while filling text input: {e}")
-                        await self._launch_codegen_fallback()
-                        filled = True
-                    except Exception as e:
-                        logger.error(f"  ❌ Error while filling text input: {e}")
-                        if isinstance(e, PlaywrightTimeoutError):
-                            await self._launch_codegen_fallback()
-                        filled = False
-
-                else:
-                    logger.warning("  No chip or text input found for this question")
-                    if allow_human_input:
-                        await asyncio.to_thread(
-                            input,
-                            f"\n⚠️  No input element found for: {question_text}\n"
-                            f"   Expected answer: '{answer}'\n"
-                            f"   Please fill manually in browser and press Enter: "
-                        )
-                        filled = True
-                    else:
-                        stats.failed += 1
-                        continue
-
-                if filled:
-                    stats.auto_filled += 1
-                    logger.info(f"✓ Answered Q{question_count}: {question_text[:50]} → {answer[:30]}")
-                else:
-                    stats.failed += 1
-
-            except PlaywrightTimeoutError as e:
-                logger.error(f"❌ TIMEOUT in main loop: {e}")
-                logger.warning("🔧 Launching Playwright Inspector for manual debugging...")
-                await self._launch_codegen_fallback()
-                # Continue trying after user closes codegen
-                continue
-            except Exception as e:
-                logger.error(f"❌ Unexpected error in form filling loop: {e}")
-                import traceback
-                traceback.print_exc()
-                break
-
+        stats.total_questions = conv['questions']
+        stats.auto_filled = conv['answered']
+        stats.skipped = conv['skipped']
+        if self.session is not None:
+            for item in conv['review']:
+                self.session.manual_answers[item['question']] = item['answer']
         return stats
 
     async def _launch_codegen_fallback(self) -> None:
@@ -558,99 +373,470 @@ class NaukriFormFiller:
     # Chatbot state helpers
     # ------------------------------------------------------------------
 
-    async def _detect_current_chatbot_state(self):
+    async def _is_chatbot_open(self) -> bool:
+        """True while the Naukri chatbot drawer is present and visible."""
+        try:
+            el = await self.page.query_selector(self.DRAWER)
+            return bool(el and await el.is_visible())
+        except Exception:
+            return False
+
+    async def _detect_current_chatbot_state(self) -> dict:
         """
-        Detect what the Naukri chatbot is currently showing.
+        Detect what the Naukri chatbot is currently asking.
 
-        Returns:
-            (question_text, chip_options, text_input, is_submit_ready)
-            - question_text: text of the last visible bot message, or None
-            - chip_options: list of (text, element) for visible + enabled buttons
-            - text_input: visible text/number/textarea element, or None
-            - is_submit_ready: True if a submit button is visible and enabled
+        ALL queries are scoped to ``self.DRAWER`` so we never touch the
+        recommended-jobs page behind the panel.
+
+        Returns a dict:
+            {
+              'done':       True if the drawer has closed (all jobs submitted),
+              'question':   text of the last visible bot message (or None),
+              'kind':       'single' | 'multi' | 'text' | 'none',
+              'options':    [(label_text, clickable_element), ...]  (radio/checkbox),
+              'text_el':    the contenteditable element for free-text answers (or None),
+            }
         """
-        is_submit_ready = await self._is_submit_button_ready()
+        if not await self._is_chatbot_open():
+            return {'done': True, 'question': None, 'kind': 'none', 'options': [], 'text_el': None}
 
-        # Last visible bot message
-        question_text = None
-        for sel in [
-            '.botItem .botMsg span',
-            '.chatbot_ListItem .botMsg span',
-            '.bot-message span',
-            '.nI-chat-container .bot-msg span',
-        ]:
+        D = self.DRAWER
+
+        # --- Current question = last visible bot message inside the drawer ---
+        question = None
+        try:
+            spans = await self.page.query_selector_all(f'{D} .botItem .botMsg span')
+            for s in spans:
+                if await s.is_visible():
+                    t = (await s.text_content() or '').strip()
+                    if len(t) > 4:
+                        question = t  # keep last → most recent question
+        except Exception:
+            pass
+
+        # --- Options: radio (single-select) or checkbox (multi-select) ---
+        # Detect by INPUT TYPE inside the drawer, not by Naukri wrapper classes,
+        # so it survives the different widgets recruiters use.
+        options = []
+        kind = 'none'
+        radios = await self.page.query_selector_all(f'{D} input[type="radio"]')
+        checks = await self.page.query_selector_all(f'{D} input[type="checkbox"]')
+        inputs = radios or checks
+        if inputs:
+            kind = 'single' if radios else 'multi'
+            for inp in inputs:
+                text, clickable = await self._resolve_option(inp)
+                if text:
+                    options.append((text, clickable))
+
+        # --- Free-text answers go into the contenteditable div ---
+        text_el = None
+        if not options:
             try:
-                msgs = await self.page.query_selector_all(sel)
-                for msg in reversed(msgs):
-                    if await msg.is_visible():
-                        t = (await msg.text_content() or '').strip()
-                        if len(t) > 5:
-                            question_text = t
-                            break
-                if question_text:
-                    break
+                ta = await self.page.query_selector(
+                    f'{D} div[contenteditable="true"], {D} textarea, {D} input[type="text"]'
+                )
+                if ta and await ta.is_visible():
+                    text_el = ta
+                    kind = 'text'
             except Exception:
                 pass
 
-        # Visible + enabled chip/radio option buttons
-        chip_options = []
-        for sel in [
-            '.chatbot_ListItem button',
-            '.botMsg button',
-            '.nI-chat-container button:not([aria-label])',
-            '[data-qa="chatbot-option"]',
-            '.chip',
-        ]:
-            try:
-                elems = await self.page.query_selector_all(sel)
-                for e in elems:
-                    try:
-                        if await e.is_visible() and await e.is_enabled():
-                            t = (await e.text_content() or '').strip()
-                            if t:
-                                chip_options.append((t, e))
-                    except Exception:
-                        pass
-                if chip_options:
-                    break
-            except Exception:
-                pass
+        return {
+            'done': False,
+            'question': question,
+            'kind': kind,
+            'options': options,
+            'text_el': text_el,
+        }
 
-        # Visible text / number / textarea input
-        text_input = None
-        for sel in [
-            'input[type="text"]:not([type="hidden"])',
-            'input[type="number"]',
-            'textarea',
-        ]:
-            try:
-                e = await self.page.query_selector(sel)
-                if e and await e.is_visible():
-                    text_input = e
-                    break
-            except Exception:
-                pass
+    async def _resolve_option(self, input_el):
+        """
+        Given a radio/checkbox input inside the drawer, return
+        (label_text, clickable_element). The label (``label[for=<id>]``) is the
+        reliable click target; the styled input itself is often not directly clickable.
+        """
+        text = ''
+        clickable = input_el
+        try:
+            rid = await input_el.get_attribute('id')
+            if rid:
+                # Attribute selector in quotes tolerates spaces / '+' (e.g. "6+ yrs")
+                label = await self.page.query_selector(f'{self.DRAWER} label[for="{rid}"]')
+                if label:
+                    text = (await label.text_content() or '').strip()
+                    clickable = label
+            if not text:
+                text = (await input_el.get_attribute('value') or '').strip()
+            if not text:
+                text = (await input_el.evaluate(
+                    "el => (el.closest('.ssrc__radio-btn-container, label, li') || {}).textContent || ''"
+                ) or '').strip()
+        except Exception:
+            pass
+        return text, clickable
 
-        return question_text, chip_options, text_input, is_submit_ready
-
-    async def _is_submit_button_ready(self) -> bool:
-        """Return True if a form submit button is currently visible and enabled."""
-        for sel in [
-            'button[data-qa="submit"]',
-            'button[data-qa="submitBtn"]',
-            'button[type="submit"]',
-            'button:has-text("Submit Application")',
-            'button:has-text("Submit")',
-            'button:has-text("Save and Apply")',
-            'button:has-text("Update and Apply")',
-        ]:
+    async def _click_send_button(self, timeout_s: float = 6.0) -> bool:
+        """
+        Click the chatbot's Save/send button to submit the current answer and
+        advance. The button starts as ``div.send.disabled`` and the ``disabled``
+        class is removed once a valid answer is entered, so we poll for it.
+        """
+        deadline = timeout_s
+        while deadline > 0:
             try:
-                btn = await self.page.query_selector(sel)
-                if btn and await btn.is_visible() and await btn.is_enabled():
+                send = await self.page.query_selector(f'{self.DRAWER} div.send:not(.disabled) .sendMsg')
+                if not send:
+                    send = await self.page.query_selector('div.send:not(.disabled) .sendMsg')
+                if send and await send.is_visible():
+                    await send.click(force=True)
                     return True
             except Exception:
                 pass
+            await asyncio.sleep(0.4)
+            deadline -= 0.4
+        logger.warning("  ⚠️  Save/send button never became enabled")
         return False
+
+    def _derive_yes_no(self, question: str, options: list) -> Optional[str]:
+        """
+        For boolean (Yes/No) questions whose threshold lives in the *question*
+        (e.g. "Do you have more than 3 years of experience?"), derive the answer
+        by comparing the user's known numeric facts against the threshold.
+
+        Returns the matching option text ('yes'/'no'/...) or None if not derivable.
+        """
+        opt_texts = {t.lower(): t for t, _ in options}
+        is_boolean = bool(opt_texts) and all(
+            o in ('yes', 'no', 'skip', 'maybe', 'y', 'n') for o in opt_texts
+        )
+        if not is_boolean:
+            return None
+
+        q = question.lower()
+        m = re.search(r'(\d+(?:\.\d+)?)\s*(?:\+|years?|yrs?)', q)
+        if not m:
+            return None
+        threshold = float(m.group(1))
+
+        # User's known experience (years). Pull total_experience from vector DB facts.
+        user_years = None
+        try:
+            cands = self.vector_db.answer_question_with_candidates(
+                question, n_candidates=1, confidence_threshold=0.0
+            )
+            if cands:
+                nums = re.findall(r'\d+(?:\.\d+)?', self._clean_answer(cands[0].answer_text))
+                if nums:
+                    user_years = float(nums[0])
+        except Exception:
+            pass
+        if user_years is None:
+            return None
+
+        if re.search(r'more than|greater than|over|at least|minimum|>\s*=?|above', q):
+            meets = user_years >= threshold
+        elif re.search(r'less than|under|below|<\s*=?|at most|maximum', q):
+            meets = user_years <= threshold
+        else:
+            meets = user_years >= threshold  # default reading for "N+ years?"
+
+        want = 'yes' if meets else 'no'
+        return opt_texts.get(want)
+
+    # ------------------------------------------------------------------
+    # Conversational driver (single source of truth for chatbot filling)
+    # ------------------------------------------------------------------
+
+    async def run_chatbot_conversation(
+        self,
+        allow_human_input: bool = True,
+        max_steps: int = 40,
+        review_log_path: Optional[str] = None,
+    ) -> dict:
+        """
+        Drive the already-open Naukri chatbot drawer to completion.
+
+        The drawer handles ALL bulk-selected jobs in one continuous conversation:
+        answer the current question → click Save → next question appears → ... until
+        the drawer closes (everything submitted) or we stall.
+
+        Returns a stats dict with answered/guessed/prompted/skipped counts, whether
+        the drawer completed, and a 'review' list of low-confidence / guessed answers.
+        """
+        stats = {
+            'questions': 0, 'answered': 0, 'guessed': 0, 'prompted': 0,
+            'skipped': 0, 'completed': False, 'review': [],
+        }
+        last_q = None
+        stall = 0
+        MAX_STALL = 4
+
+        for _ in range(max_steps):
+            await asyncio.sleep(1.2)  # let the chatbot animate the next question in
+            state = await self._detect_current_chatbot_state()
+
+            if state['done']:
+                stats['completed'] = True
+                logger.info("✅ Chatbot drawer closed — all selected jobs submitted")
+                break
+
+            q = state['question']
+
+            if not q:
+                stall += 1
+                if stall >= MAX_STALL:
+                    logger.warning("⚠️  No question detected after retries — stopping")
+                    break
+                await asyncio.sleep(1.5)
+                continue
+
+            if q == last_q:
+                # We answered but the chatbot didn't advance — force a fallback answer.
+                stall += 1
+                if stall >= MAX_STALL:
+                    logger.warning(f"⚠️  Stuck on: {q[:60]} — forcing fallback")
+                    await self._answer_fallback(state, stats, reason='stall')
+                    last_q = None
+                    stall = 0
+                await asyncio.sleep(1.5)
+                continue
+
+            stall = 0
+            last_q = q
+            stats['questions'] += 1
+            await self._answer_question(state, stats, allow_human_input)
+
+        if review_log_path and stats['review']:
+            self._write_review_log(review_log_path, stats['review'])
+
+        logger.info(
+            f"📊 Chatbot: {stats['answered']} answered "
+            f"({stats['guessed']} guessed, {stats['prompted']} prompted), "
+            f"completed={stats['completed']}"
+        )
+        return stats
+
+    async def _answer_question(self, state: dict, stats: dict, allow_human_input: bool) -> None:
+        """Answer the current question, then click Save to advance."""
+        q = state['question']
+        kind = state['kind']
+        options = state['options']
+
+        # Semantic candidates from the vector DB (sentence-transformer backed).
+        try:
+            candidates = self.vector_db.answer_question_with_candidates(
+                q, n_candidates=3, confidence_threshold=0.0
+            )
+        except Exception as e:
+            logger.debug(f"vector db lookup failed: {e}")
+            candidates = []
+        best = candidates[0] if candidates else None
+        confident = bool(best and best.confidence >= self.confidence_threshold)
+        # Facts are stored as "Question?\nA: value" — fill only the value, never the
+        # stored question text, into the chatbot.
+        best_text = self._clean_answer(best.answer_text) if best else ''
+
+        # Detail goes to the log file only; the concise one-line result is emitted
+        # on the console by _finish().
+        logger.debug("BOT: %s | options=%s | best=%s (%.2f)",
+                     q,
+                     [t for t, _ in options] if options else None,
+                     (best_text[:60] if best else None),
+                     (best.confidence if best else 0.0))
+
+        # ---------- Option questions (single / multi / yes-no) ----------
+        if options:
+            # 1) Boolean question with threshold in the prompt → derive from facts.
+            derived = self._derive_yes_no(q, options)
+            if derived:
+                ok = await self._click_option_by_text(derived, options)
+                if ok:
+                    await self._finish(stats, q, derived, 'derived')
+                    return
+
+            # 2) Confident semantic answer → match to an option.
+            if confident:
+                pick = self._pick_best_chip(best_text, options)
+                if pick:
+                    await self._click_option(pick[1])
+                    await self._finish(stats, q, pick[0], 'auto')
+                    return
+
+            # 3) Low confidence → ask the human if allowed.
+            if allow_human_input:
+                picked = await self._prompt_for_option(q, options, best_text)
+                if picked:
+                    await self._click_option(picked[1])
+                    self._learn(q, picked[0])
+                    await self._finish(stats, q, picked[0], 'prompted')
+                    stats['prompted'] += 1
+                    return
+
+            # 4) Best-effort guess (top candidate even if <0.6), then fallback.
+            if best_text:
+                pick = self._pick_best_chip(best_text, options)
+                if pick:
+                    await self._click_option(pick[1])
+                    await self._finish(stats, q, pick[0], 'guess', review=True,
+                                       conf=best.confidence)
+                    return
+            await self._answer_fallback(state, stats, reason='no-match')
+            return
+
+        # ---------- Free-text questions ----------
+        if state['text_el'] is not None:
+            value = None
+            tag = 'auto'
+            if confident:
+                value = best_text
+            elif allow_human_input:
+                value = await self._prompt_for_text(q, best_text)
+                if value:
+                    self._learn(q, value)
+                    tag = 'prompted'
+                    stats['prompted'] += 1
+            if value is None or value == '':
+                value = best_text or 'NA'
+                tag = 'guess'
+            await self._fill_text(state['text_el'], value)
+            await self._finish(stats, q, value, tag,
+                               review=(tag != 'auto'),
+                               conf=(best.confidence if best else 0.0))
+            return
+
+        # ---------- Unknown widget ----------
+        logger.warning(f"  No recognized input for: {q[:60]}")
+        await self._answer_fallback(state, stats, reason='no-input')
+
+    async def _finish(self, stats, question, answer, tag, review=False, conf=None):
+        """Click Save to advance and record the answer."""
+        sent = await self._click_send_button()
+        stats['answered'] += 1
+        if tag in ('guess', 'derived'):
+            stats['guessed'] += (tag == 'guess')
+        logger.info(f"✓ [{tag}] {question[:50]} → {str(answer)[:40]} (sent={sent})")
+        if review or tag in ('guess', 'derived', 'fallback'):
+            stats['review'].append({
+                'question': question, 'answer': str(answer),
+                'how': tag, 'confidence': round(conf, 3) if conf is not None else None,
+            })
+
+    async def _answer_fallback(self, state, stats, reason: str) -> None:
+        """
+        Unanswerable question: pick a safe option and move on (never block / skip the
+        batch). Prefer a 'Skip' option if Naukri offers one, else the first option;
+        for text, type a neutral value. Always logged for review.
+        """
+        options = state.get('options') or []
+        q = state.get('question') or ''
+        if options:
+            skip = next((o for o in options if o[0].strip().lower() in ('skip', 'no')), None)
+            choice = skip or options[0]
+            await self._click_option(choice[1])
+            await self._finish(stats, q, choice[0], 'fallback', review=True)
+        elif state.get('text_el') is not None:
+            await self._fill_text(state['text_el'], 'NA')
+            await self._finish(stats, q, 'NA', 'fallback', review=True)
+        else:
+            # nothing to do; try to send anyway so we don't deadlock
+            await self._click_send_button()
+            stats['skipped'] += 1
+
+    async def _click_option(self, clickable) -> bool:
+        for attempt in ('click', 'force', 'js'):
+            try:
+                if attempt == 'click':
+                    await clickable.click(timeout=4000)
+                elif attempt == 'force':
+                    await clickable.click(force=True)
+                else:
+                    await clickable.evaluate('el => el.click()')
+                await asyncio.sleep(0.4)
+                return True
+            except Exception:
+                continue
+        logger.warning("  ⚠️  Could not click option")
+        return False
+
+    async def _click_option_by_text(self, text: str, options: list) -> bool:
+        for t, el in options:
+            if t.strip().lower() == text.strip().lower():
+                return await self._click_option(el)
+        return False
+
+    async def _fill_text(self, text_el, value: str) -> bool:
+        try:
+            await text_el.click()
+            await asyncio.sleep(0.2)
+            try:
+                await text_el.fill(str(value))
+            except Exception:
+                # contenteditable fallback: set text + fire input so Save enables
+                await text_el.evaluate(
+                    "(el, v) => { el.textContent = v; "
+                    "el.dispatchEvent(new InputEvent('input', {bubbles: true})); }",
+                    str(value),
+                )
+            await asyncio.sleep(0.3)
+            return True
+        except Exception as e:
+            logger.warning(f"  ⚠️  Could not fill text: {e}")
+            return False
+
+    async def _prompt_for_option(self, question, options, suggestion: str = ''):
+        opts = [t for t, _ in options]
+        ans = (await asyncio.to_thread(
+            input,
+            f"\n❓ {question}\n   Options: {opts}\n"
+            f"   Suggestion: {suggestion}\n   Type the option text (or Enter to skip): "
+        )).strip()
+        if not ans:
+            return None
+        pick = self._pick_best_chip(ans, options)
+        return pick or (options[0] if options else None)
+
+    async def _prompt_for_text(self, question, suggestion: str = ''):
+        ans = (await asyncio.to_thread(
+            input,
+            f"\n❓ {question}\n   Suggestion: {suggestion}\n"
+            f"   Type your answer (or Enter to accept suggestion): "
+        )).strip()
+        return ans or (suggestion or None)
+
+    @staticmethod
+    def _clean_answer(text: str) -> str:
+        """
+        Extract the answer value from a stored fact.
+
+        The vector DB stores entries as ``"<question>?\\nA: <value>"``; filling the
+        whole chunk into a chatbot text box is wrong, so keep only the value after
+        the final ``A:`` marker. Plain answers pass through unchanged.
+        """
+        if not text:
+            return ''
+        t = text.strip()
+        m = re.search(r'(?:^|\n)\s*A:\s*(.+)\Z', t, re.DOTALL)
+        if m:
+            t = m.group(1).strip()
+        return t
+
+    def _learn(self, question: str, answer: str) -> None:
+        try:
+            self.vector_db.store_answered_question(
+                question, answer, category='learned_answers', tags=['naukri']
+            )
+        except Exception:
+            pass
+
+    def _write_review_log(self, path: str, review: list) -> None:
+        try:
+            import json
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(json.dumps(review, indent=2))
+            logger.info(f"📝 {len(review)} answer(s) logged for review → {path}")
+        except Exception as e:
+            logger.debug(f"could not write review log: {e}")
 
     def _pick_best_chip(self, answer: str, chip_options: list):
         """

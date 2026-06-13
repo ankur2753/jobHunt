@@ -6,23 +6,18 @@ import logging
 from pathlib import Path
 from playwright.async_api import async_playwright, expect
 
-# Configure logging early (suppress by default, enable with --verbose)
-# Default: WARNING level (only shows errors and warnings)
-DEFAULT_LOG_LEVEL = logging.WARNING
-logging.basicConfig(
-    level=DEFAULT_LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Suppress noisy libraries
-logging.getLogger('chromadb').setLevel(logging.WARNING)
-logging.getLogger('sentence_transformers').setLevel(logging.WARNING)
-logging.getLogger('playwright').setLevel(logging.WARNING)
-
 # Add project root to path to import other modules
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+# Configure logging early — clean terminal, full detail to logs/<name>_run_<ts>.log.
+# Pass --verbose to also stream DEBUG to the console. Must run before importing the
+# heavy modules below so HF/transformers progress bars are suppressed at model load.
+from scripts.common_stuff.logging_setup import setup_logging
+_console_level = logging.DEBUG if '--verbose' in sys.argv else logging.INFO
+LOG_FILE = setup_logging(console_level=_console_level, run_name='orchestrator')
+logger = logging.getLogger(__name__)
+logger.info(f"📂 Full log: {LOG_FILE}")
 
 from scripts.job_scraping.linkedin_job_apply import LinkedInJobApply
 from scripts.job_scraping.naukri_job_apply import NaukriJobApply

@@ -22,8 +22,8 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 from playwright.async_api import Page
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Logging is configured centrally via scripts.common_stuff.logging_setup; just get
+# this module's logger (do NOT force the root level here — it floods the terminal).
 logger = logging.getLogger(__name__)
 
 
