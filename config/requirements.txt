@@ -3,3 +3,7 @@ pytest-playwright==0.4.4
 python-dotenv==1.0.1
 requests==2.31.0
 beautifulsoup4==4.12.3
+mcp>=1.0.0
+chromadb==0.4.24
+sentence-transformers==2.7.0
+

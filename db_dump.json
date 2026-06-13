@@ -1,0 +1,645 @@
+{
+  "ids": [
+    "personal_details_name_0",
+    "personal_details_email_1",
+    "personal_details_phone_2",
+    "personal_details_country_code_3",
+    "personal_details_location_4",
+    "personal_details_linkedin_5",
+    "personal_details_summary_6",
+    "personal_details_core_skills_7",
+    "personal_details_core_skills_8",
+    "personal_details_core_skills_9",
+    "personal_details_core_skills_10",
+    "personal_details_core_skills_11",
+    "personal_details_skills_12",
+    "personal_details_skills_13",
+    "personal_details_skills_14",
+    "personal_details_skills_15",
+    "personal_details_skills_16",
+    "personal_details_skills_17",
+    "personal_details_skills_18",
+    "personal_details_skills_19",
+    "personal_details_skills_20",
+    "personal_details_skills_21",
+    "personal_details_skills_22",
+    "personal_details_skills_23",
+    "personal_details_skills_24",
+    "personal_details_experience_title_25",
+    "personal_details_experience_company_26",
+    "personal_details_experience_duration_27",
+    "personal_details_bullets_28",
+    "personal_details_bullets_29",
+    "personal_details_bullets_30",
+    "personal_details_bullets_31",
+    "personal_details_experience_title_32",
+    "personal_details_experience_company_33",
+    "personal_details_experience_duration_34",
+    "personal_details_bullets_35",
+    "personal_details_bullets_36",
+    "personal_details_bullets_37",
+    "personal_details_bullets_38",
+    "personal_details_experience_title_39",
+    "personal_details_experience_company_40",
+    "personal_details_experience_duration_41",
+    "personal_details_bullets_42",
+    "personal_details_bullets_43",
+    "personal_details_education_degree_44",
+    "personal_details_education_school_45",
+    "personal_details_education_year_46",
+    "personal_details_education_degree_47",
+    "personal_details_education_school_48",
+    "personal_details_education_year_49",
+    "personal_details_education_degree_50",
+    "personal_details_education_school_51",
+    "personal_details_education_year_52",
+    "personal_details_salary_current_53",
+    "personal_details_salary_expected_for_qa_roles_54",
+    "personal_details_salary_expected_for_software_development_roles_55",
+    "personal_details_salary_expected_for_any_other_role_56",
+    "learned_answers_select_experience_270",
+    "learned_answers_enter_location_1467",
+    "learned_answers_what_is_your_notice_period__3082",
+    "learned_answers_enter_location_8574",
+    "learned_answers_serving_notice_period_6196",
+    "learned_answers_how_many_years_of_experience_do_you_have_in_angular__998",
+    "learned_answers_thank_you_for_your_responses__1586",
+    "personal_details_total_experience_57",
+    "personal_details_skills_experience_python_58",
+    "personal_details_skills_experience_javascript_59",
+    "personal_details_skills_experience_react_60",
+    "personal_details_skills_experience_node_js_61",
+    "personal_details_skills_experience_sql_62",
+    "personal_details_skills_experience_mongodb_63",
+    "personal_details_skills_experience_aws_64",
+    "personal_details_skills_experience_docker_65",
+    "personal_details_skills_experience_kubernetes_66",
+    "personal_details_skills_experience_git_67",
+    "personal_details_skills_experience_machine_learning_68",
+    "personal_details_skills_experience_apis_69",
+    "personal_details_skills_experience_c__70"
+  ],
+  "embeddings": null,
+  "documents": [
+    "name: Ankur Kumar",
+    "2753 LPA",
+    "8002656334 LPA",
+    "91 LPA",
+    "location: Bengaluru,Karnataka",
+    "linkedin: https://www.linkedin.com/in/shootingdragon/",
+    "summary: Experienced QA engineer with a knack for creating applications",
+    "core_skills: C#",
+    "core_skills: JavaScript",
+    "core_skills: React",
+    "core_skills: SQL",
+    "core_skills: Azure",
+    "skills: Python",
+    "skills: JavaScript",
+    "skills: React",
+    "skills: Node.js",
+    "skills: SQL",
+    "skills: MongoDB",
+    "skills: AWS",
+    "skills: Docker",
+    "skills: Kubernetes",
+    "skills: Git",
+    "skills: Machine Learning",
+    "skills: APIs",
+    "skills: C#",
+    "experience title: Associate Engineer",
+    "experience company: SafeSend Technologies",
+    "2023 LPA",
+    "bullets: Developed a full stack web application from scratch, including back-end services, front-end interface in React.js and MSSQL database",
+    "bullets: Built microservice architecture to improve modularity and reduce dependencies",
+    "25 LPA",
+    "bullets: Collaborated with product owners and customers to identify and resolve product changes",
+    "experience title: Graduate Engineering Trainee",
+    "experience company: SafeSend Technologies",
+    "experience duration:",
+    "bullets: Developed ASP.NET APIs using patterns such as SAGA, CQRS",
+    "bullets: Optimized database performance through query optimization and indexing",
+    "bullets: Implemented SOLID principles in existing projects",
+    "bullets: Migrated legacy MVC Razor page to React.js",
+    "experience title: Front End Intern",
+    "experience company: Deloitte",
+    "2022 LPA",
+    "bullets: Developed React-based web application with responsive user interface",
+    "bullets: Created reusable components for better maintainability",
+    "education degree: B.E., Computer Science Engineering",
+    "education school: Sapthagiri College Of Engineering",
+    "2023 LPA",
+    "12 LPA",
+    "education school: D.A.V Public School",
+    "2019 LPA",
+    "10 LPA",
+    "education school: D.A.V Public School",
+    "2017 LPA",
+    "12 LPA",
+    "18-24 LPA",
+    "16-20 LPA",
+    "20 LPA",
+    "Q: Select experience\nA: 3",
+    "Q: Enter location\nA: Banglore",
+    "Q: What is your notice period?\nA: 30 days or 1 month",
+    "Q: Enter location\nA: Banglore",
+    "Q: Serving Notice Period\nA: 1 month",
+    "Q: How many years of experience do you have in Angular?\nA: 0",
+    "Q: Thank you for your responses.\nA: Kubernetes",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA",
+    "3 LPA"
+  ],
+  "uris": null,
+  "included": [
+    "metadatas",
+    "documents"
+  ],
+  "data": null,
+  "metadatas": [
+    {
+      "normalized_key": "name",
+      "category": "personal_details",
+      "key": "name"
+    },
+    {
+      "key": "email",
+      "normalized_key": "email",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "phone",
+      "key": "phone",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "key": "country_code",
+      "normalized_key": "country_code"
+    },
+    {
+      "normalized_key": "location",
+      "category": "personal_details",
+      "key": "location"
+    },
+    {
+      "normalized_key": "linkedin",
+      "key": "linkedin",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "summary",
+      "key": "summary",
+      "category": "personal_details"
+    },
+    {
+      "key": "core_skills",
+      "normalized_key": "core_skills",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "key": "core_skills",
+      "normalized_key": "core_skills"
+    },
+    {
+      "normalized_key": "core_skills",
+      "key": "core_skills",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "core_skills",
+      "key": "core_skills",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "core_skills",
+      "category": "personal_details",
+      "key": "core_skills"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "skills",
+      "key": "skills"
+    },
+    {
+      "category": "personal_details",
+      "key": "skills",
+      "normalized_key": "skills"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "skills",
+      "key": "skills"
+    },
+    {
+      "key": "skills",
+      "normalized_key": "skills",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "skills",
+      "key": "skills"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "skills",
+      "key": "skills"
+    },
+    {
+      "normalized_key": "skills",
+      "key": "skills",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "key": "skills",
+      "normalized_key": "skills"
+    },
+    {
+      "normalized_key": "skills",
+      "key": "skills",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "skills",
+      "key": "skills"
+    },
+    {
+      "key": "skills",
+      "normalized_key": "skills",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "skills",
+      "category": "personal_details",
+      "key": "skills"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "skills",
+      "key": "skills"
+    },
+    {
+      "sub_key": "title",
+      "key": "experience",
+      "normalized_sub_key": "title",
+      "category": "personal_details",
+      "normalized_key": "experience"
+    },
+    {
+      "normalized_key": "experience",
+      "normalized_sub_key": "company",
+      "sub_key": "company",
+      "key": "experience",
+      "category": "personal_details"
+    },
+    {
+      "key": "experience",
+      "normalized_sub_key": "duration",
+      "sub_key": "duration",
+      "category": "personal_details",
+      "normalized_key": "experience"
+    },
+    {
+      "category": "personal_details",
+      "key": "bullets",
+      "normalized_key": "bullets"
+    },
+    {
+      "category": "personal_details",
+      "key": "bullets",
+      "normalized_key": "bullets"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "bullets",
+      "key": "bullets"
+    },
+    {
+      "category": "personal_details",
+      "normalized_key": "bullets",
+      "key": "bullets"
+    },
+    {
+      "category": "personal_details",
+      "key": "experience",
+      "sub_key": "title",
+      "normalized_sub_key": "title",
+      "normalized_key": "experience"
+    },
+    {
+      "key": "experience",
+      "normalized_sub_key": "company",
+      "sub_key": "company",
+      "normalized_key": "experience",
+      "category": "personal_details"
+    },
+    {
+      "sub_key": "duration",
+      "key": "experience",
+      "normalized_sub_key": "duration",
+      "normalized_key": "experience",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "bullets",
+      "key": "bullets",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "bullets",
+      "key": "bullets",
+      "category": "personal_details"
+    },
+    {
+      "key": "bullets",
+      "category": "personal_details",
+      "normalized_key": "bullets"
+    },
+    {
+      "category": "personal_details",
+      "key": "bullets",
+      "normalized_key": "bullets"
+    },
+    {
+      "normalized_key": "experience",
+      "category": "personal_details",
+      "normalized_sub_key": "title",
+      "sub_key": "title",
+      "key": "experience"
+    },
+    {
+      "normalized_key": "experience",
+      "normalized_sub_key": "company",
+      "key": "experience",
+      "category": "personal_details",
+      "sub_key": "company"
+    },
+    {
+      "category": "personal_details",
+      "sub_key": "duration",
+      "normalized_key": "experience",
+      "key": "experience",
+      "normalized_sub_key": "duration"
+    },
+    {
+      "normalized_key": "bullets",
+      "category": "personal_details",
+      "key": "bullets"
+    },
+    {
+      "normalized_key": "bullets",
+      "category": "personal_details",
+      "key": "bullets"
+    },
+    {
+      "normalized_key": "education",
+      "category": "personal_details",
+      "sub_key": "degree",
+      "normalized_sub_key": "degree",
+      "key": "education"
+    },
+    {
+      "normalized_sub_key": "school",
+      "normalized_key": "education",
+      "category": "personal_details",
+      "sub_key": "school",
+      "key": "education"
+    },
+    {
+      "normalized_key": "education",
+      "key": "education",
+      "category": "personal_details",
+      "normalized_sub_key": "year",
+      "sub_key": "year"
+    },
+    {
+      "category": "personal_details",
+      "sub_key": "degree",
+      "normalized_key": "education",
+      "normalized_sub_key": "degree",
+      "key": "education"
+    },
+    {
+      "sub_key": "school",
+      "normalized_sub_key": "school",
+      "key": "education",
+      "normalized_key": "education",
+      "category": "personal_details"
+    },
+    {
+      "normalized_key": "education",
+      "key": "education",
+      "normalized_sub_key": "year",
+      "category": "personal_details",
+      "sub_key": "year"
+    },
+    {
+      "key": "education",
+      "category": "personal_details",
+      "sub_key": "degree",
+      "normalized_key": "education",
+      "normalized_sub_key": "degree"
+    },
+    {
+      "category": "personal_details",
+      "normalized_sub_key": "school",
+      "normalized_key": "education",
+      "sub_key": "school",
+      "key": "education"
+    },
+    {
+      "normalized_sub_key": "year",
+      "key": "education",
+      "normalized_key": "education",
+      "sub_key": "year",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "key": "salary",
+      "normalized_key": "salary",
+      "normalized_sub_key": "current",
+      "sub_key": "current"
+    },
+    {
+      "key": "salary",
+      "category": "personal_details",
+      "normalized_key": "salary",
+      "sub_key": "expected for qa roles",
+      "normalized_sub_key": "expected_for_qa_roles"
+    },
+    {
+      "key": "salary",
+      "category": "personal_details",
+      "sub_key": "expected for software development roles",
+      "normalized_sub_key": "expected_for_software_development_roles",
+      "normalized_key": "salary"
+    },
+    {
+      "key": "salary",
+      "normalized_key": "salary",
+      "sub_key": "expected for any other role",
+      "category": "personal_details",
+      "normalized_sub_key": "expected_for_any_other_role"
+    },
+    {
+      "tags": "naukri,manual_fallback",
+      "stored_answer": "3",
+      "key": "Select experience",
+      "category": "learned_answers",
+      "normalized_key": "select_experience"
+    },
+    {
+      "normalized_key": "enter_location",
+      "stored_answer": "Banglore",
+      "category": "learned_answers",
+      "key": "Enter location",
+      "tags": "naukri,manual_fallback"
+    },
+    {
+      "normalized_key": "what_is_your_notice_period_",
+      "category": "learned_answers",
+      "tags": "naukri,manual_fallback",
+      "key": "What is your notice period?",
+      "stored_answer": "30 days or 1 month"
+    },
+    {
+      "normalized_key": "enter_location",
+      "stored_answer": "Banglore",
+      "tags": "naukri,manual_fallback",
+      "key": "Enter location",
+      "category": "learned_answers"
+    },
+    {
+      "stored_answer": "1 month",
+      "tags": "naukri,manual_fallback",
+      "normalized_key": "serving_notice_period",
+      "category": "learned_answers",
+      "key": "Serving Notice Period"
+    },
+    {
+      "normalized_key": "how_many_years_of_experience_do_you_have_in_angular_",
+      "tags": "naukri,manual_fallback",
+      "stored_answer": "0",
+      "key": "How many years of experience do you have in Angular?",
+      "category": "learned_answers"
+    },
+    {
+      "normalized_key": "thank_you_for_your_responses_",
+      "key": "Thank you for your responses.",
+      "tags": "naukri",
+      "category": "learned_answers",
+      "stored_answer": "Kubernetes"
+    },
+    {
+      "normalized_key": "total_experience",
+      "category": "personal_details",
+      "key": "total_experience"
+    },
+    {
+      "category": "personal_details",
+      "sub_key": "Python",
+      "key": "skills_experience",
+      "normalized_sub_key": "python",
+      "normalized_key": "skills_experience"
+    },
+    {
+      "sub_key": "JavaScript",
+      "normalized_sub_key": "javascript",
+      "key": "skills_experience",
+      "normalized_key": "skills_experience",
+      "category": "personal_details"
+    },
+    {
+      "sub_key": "React",
+      "category": "personal_details",
+      "normalized_key": "skills_experience",
+      "normalized_sub_key": "react",
+      "key": "skills_experience"
+    },
+    {
+      "normalized_sub_key": "node_js",
+      "category": "personal_details",
+      "key": "skills_experience",
+      "sub_key": "Node.js",
+      "normalized_key": "skills_experience"
+    },
+    {
+      "key": "skills_experience",
+      "category": "personal_details",
+      "normalized_sub_key": "sql",
+      "normalized_key": "skills_experience",
+      "sub_key": "SQL"
+    },
+    {
+      "normalized_sub_key": "mongodb",
+      "key": "skills_experience",
+      "normalized_key": "skills_experience",
+      "sub_key": "MongoDB",
+      "category": "personal_details"
+    },
+    {
+      "sub_key": "AWS",
+      "category": "personal_details",
+      "key": "skills_experience",
+      "normalized_key": "skills_experience",
+      "normalized_sub_key": "aws"
+    },
+    {
+      "normalized_key": "skills_experience",
+      "category": "personal_details",
+      "normalized_sub_key": "docker",
+      "sub_key": "Docker",
+      "key": "skills_experience"
+    },
+    {
+      "category": "personal_details",
+      "key": "skills_experience",
+      "normalized_sub_key": "kubernetes",
+      "normalized_key": "skills_experience",
+      "sub_key": "Kubernetes"
+    },
+    {
+      "normalized_sub_key": "git",
+      "key": "skills_experience",
+      "normalized_key": "skills_experience",
+      "sub_key": "Git",
+      "category": "personal_details"
+    },
+    {
+      "category": "personal_details",
+      "sub_key": "Machine Learning",
+      "key": "skills_experience",
+      "normalized_key": "skills_experience",
+      "normalized_sub_key": "machine_learning"
+    },
+    {
+      "key": "skills_experience",
+      "sub_key": "APIs",
+      "normalized_key": "skills_experience",
+      "category": "personal_details",
+      "normalized_sub_key": "apis"
+    },
+    {
+      "normalized_key": "skills_experience",
+      "category": "personal_details",
+      "sub_key": "C#",
+      "key": "skills_experience",
+      "normalized_sub_key": "c_"
+    }
+  ]
+}

@@ -21,8 +21,8 @@
     <header class="mb-8">
         <h1 class="text-3xl font-bold text-blue-400">Agent Setup & Configuration</h1>
         <p class="text-slate-400 mt-2">
-            Fill out your details below. After submitting, you will be given two JSON files. 
-            <strong>You must save them manually</strong> into the `personal_details/` directory of this project.
+            Fill out your details below. After submitting, you will be given a Python script. 
+            <strong>You must save it manually</strong> and run it to insert your details into the vector database.
         </p>
     </header>
 
@@ -124,15 +124,10 @@
 
     <!-- Output Section -->
     <div id="output-section" class="hidden mt-8">
-         <div class="file-card p-4 rounded-lg mb-4">
-            <h3 class="font-semibold text-lg mb-2">1. Save as `user_details.json`</h3>
-            <p class="text-sm text-slate-400 mb-2">Save this file in the `personal_details` folder.</p>
-            <textarea id="user-details-output" rows="12" class="textarea w-full p-2 rounded" readonly></textarea>
-        </div>
-        <div class="file-card p-4 rounded-lg">
-            <h3 class="font-semibold text-lg mb-2">2. Save as `job_preferences.json`</h3>
-             <p class="text-sm text-slate-400 mb-2">Save this file in the `personal_details` folder.</p>
-            <textarea id="job-preferences-output" rows="8" class="textarea w-full p-2 rounded" readonly></textarea>
+         <div class="file-card p-4 rounded-lg">
+            <h3 class="font-semibold text-lg mb-2">Save as `setup_data.py` and run it</h3>
+            <p class="text-sm text-slate-400 mb-2">Save this Python script and run it with `python setup_data.py` to insert your details into the vector database.</p>
+            <textarea id="user-details-output" rows="20" class="textarea w-full p-2 rounded" readonly></textarea>
         </div>
     </div>
 
@@ -243,10 +238,21 @@
                 jobType: document.getElementById('job-type').value,
                 workPreference: document.getElementById('work-preference').value
             };
-            
-            // --- Display JSON Output ---
-            document.getElementById('user-details-output').value = JSON.stringify(userDetails, null, 4);
-            document.getElementById('job-preferences-output').value = JSON.stringify(jobPreferences, null, 4);
+
+            // --- Generate Python Script ---
+            const pythonScript = `from scripts.common_stuff.vector_db_manager import VectorDBManager
+
+user_details = ${JSON.stringify(userDetails, null, 4)}
+
+job_preferences = ${JSON.stringify(jobPreferences, null, 4)}
+
+manager = VectorDBManager()
+manager.add_personal_details(user_details, job_preferences)
+print("Personal details added to vector database successfully!")
+`;
+
+            // --- Display Python Script Output ---
+            document.getElementById('user-details-output').value = pythonScript;
 
             document.getElementById('output-section').classList.remove('hidden');
             window.scrollTo(0, document.body.scrollHeight);
