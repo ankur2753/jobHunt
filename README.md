@@ -120,7 +120,134 @@ python scripts/orchestrator/orchestrator.py
 
 ---
 
-## Usage
+## Setup and Usage Guide
+
+### 1. Installation
+
+```bash
+# Navigate to the project directory
+cd /home/ankurkumar/ankur_code/agent
+
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r config/requirements.txt
+
+# Install Chromium browser for Playwright
+playwright install chromium
+```
+
+### 2. Setting Up Your Personal Profile
+
+The system uses a vector database to store your personal information for semantic matching with job application questions. This ensures better auto-fill accuracy.
+
+#### Option A: Using the Web UI (Recommended)
+
+```bash
+# Open setup.html in your browser
+# Fill in all your personal details, skills, experience, etc.
+# Click "Generate Script" and save the output as setup_data.py in the project root
+
+# After saving setup_data.py, populate the vector DB
+python setup_data.py
+```
+
+#### Option B: Using the Seed Script (Quick Start)
+
+```bash
+# Populate the vector DB with pre-configured profile answers
+python scripts/seed_profile_answers.py
+
+# Verify the data was stored correctly
+python scripts/seed_profile_answers.py --verify
+```
+
+#### Option C: Manual Entry via CLI
+
+```bash
+# Add individual details to the vector DB
+python scripts/common_stuff/vector_db_manager.py add --key "expected_salary" --value "16-20 LPA" --category personal_details
+
+# Query the vector DB to test semantic matching
+python scripts/common_stuff/vector_db_manager.py query --text "What is your expected CTC?" --n 3
+
+# Dump all stored data for review
+python scripts/common_stuff/vector_db_manager.py dump
+```
+
+### 3. Managing Your Vector DB for Better Matches
+
+To improve job application matching accuracy, keep your vector DB updated with current information:
+
+```bash
+# Update existing information
+python scripts/common_stuff/vector_db_manager.py add --key "current_ctc" --value "15 LPA" --category personal_details
+
+# Add new skills with experience
+python scripts/common_stuff/vector_db_manager.py add --key "python_experience" --value "3 years" --category skills
+
+# Add multiple entries for better semantic matching
+python scripts/common_stuff/vector_db_manager.py add --key "notice_period" --value "30 days" --category logistics
+python scripts/common_stuff/vector_db_manager.py add --key "availability" --value "30 days notice" --category logistics
+python scripts/common_stuff/vector_db_manager.py add --key "joining_date" --value "30 days from offer" --category logistics
+```
+
+**Tips for better matching:**
+- Store multiple phrasings of the same information (e.g., "30 days", "1 month", "30 days notice")
+- Keep skills and experience levels current
+- Update salary expectations periodically
+- Add location preferences with alternatives
+
+### 4. Cookie Management for Login
+
+The system uses saved cookies to maintain login sessions across job portals. Cookies are stored in `personal_details/` directory.
+
+#### Initial Login (Save Cookies)
+
+```bash
+# Run the orchestrator and choose manual login
+python scripts/orchestrator/orchestrator.py
+
+# Select a portal (LinkedIn, Naukri, or InstaHyre)
+# Choose "Login manually" when prompted
+# Complete the login in the browser window
+# Cookies are automatically saved after successful login
+```
+
+#### Updating Cookies
+
+When your session expires or you need to re-authenticate:
+
+```bash
+# Run the orchestrator again
+python scripts/orchestrator/orchestrator.py
+
+# Select the portal where cookies are expired
+# Choose "Login manually" to refresh the session
+# New cookies will overwrite the old ones automatically
+```
+
+#### Cookie File Locations
+
+Cookies are stored as JSON files:
+- LinkedIn: `personal_details/linkedin_cookies.json`
+- Naukri: `personal_details/naukri_cookies.json`
+- InstaHyre: `personal_details/instahyre_cookies.json` (when implemented)
+
+#### Manual Cookie Management (Advanced)
+
+If you need to manually export/import cookies:
+
+```bash
+# Cookies are automatically managed by the orchestrator
+# Cookie files are in standard JSON format
+# You can backup cookie files by copying them:
+cp personal_details/linkedin_cookies.json personal_details/linkedin_cookies.json.backup
+```
+
+### 5. Running the System
 
 ```bash
 # Main entry point — menu-driven CLI (portal → action)
