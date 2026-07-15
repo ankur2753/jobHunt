@@ -12,7 +12,7 @@ from typing import List, Dict, Optional
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 from pathlib import Path
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -263,7 +263,94 @@ class NaukriJobApply:
             result['errors'].append(str(e))
         
         return result
-    
+
+    async def update_last_working_day(self, days_offset: int = 60) -> bool:
+        """
+        Updates the expected last working day on Naukri profile page to current date + days_offset.
+        
+        Args:
+            days_offset: Number of days from today for LWD (default: 60)
+            
+        Returns:
+            bool: True if updated successfully, False otherwise.
+        """
+        try:
+            profile_url = "https://www.naukri.com/mnjuser/profile"
+            
+            # 1. Calculate target LWD
+            target_date = datetime.now() + timedelta(days=days_offset)
+            year = target_date.year
+            month_num = target_date.month
+            day = target_date.day
+            month_name = target_date.strftime("%b")
+            
+            logger.info(f"Navigating to Naukri profile page to update LWD: {profile_url}")
+            await self.page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
+            await self.page.wait_for_timeout(3000)
+            
+            logger.info(f"Target LWD computed: {day} {month_name} {year} (month code: {month_num})")
+            
+            # 2. Click the edit profile basic details button
+            edit_btn_selector = ".hdn .icon.edit"
+            logger.info("Opening Basic Details drawer...")
+            edit_btn = await self.page.wait_for_selector(edit_btn_selector, timeout=10000)
+            await edit_btn.click()
+            
+            # 3. Wait for the form and async elements (pre-loaders) to load completely
+            form_selector = "#editBasicDetailsForm"
+            await self.page.wait_for_selector(form_selector, timeout=15000)
+            
+            # Important: Wait for async dropdown values / spinners to disappear/resolve
+            await self.page.wait_for_timeout(5000)
+            
+            # 4. Helper function to select custom Naukri dropdowns
+            async def select_custom_dropdown(trigger_selector: str, option_selector: str, label: str):
+                logger.info(f"Selecting {label}...")
+                await self.page.click(trigger_selector)
+                await self.page.wait_for_timeout(500)  # Wait for animation
+                await self.page.wait_for_selector(option_selector, state="visible", timeout=5000)
+                await self.page.click(option_selector)
+                await self.page.wait_for_timeout(500)
+                
+            # 5. Populate Year dropdown
+            await select_custom_dropdown(
+                trigger_selector="#lwdYearFor",
+                option_selector=f'a[data-id="lwdYear_{year}"]',
+                label="Year"
+            )
+            
+            # 6. Populate Month dropdown
+            await select_custom_dropdown(
+                trigger_selector="#lwdMonthFor",
+                option_selector=f'a[data-id="lwdMonth_{month_num}"]',
+                label="Month"
+            )
+            
+            # 7. Populate Day dropdown
+            await select_custom_dropdown(
+                trigger_selector="#lwdDayFor",
+                option_selector=f'a[data-id="lwdDay_{day}"]',
+                label="Day"
+            )
+            
+            # 8. Click Save
+            save_btn_selector = "#saveBasicDetailsBtn"
+            logger.info("Clicking Save button...")
+            await self.page.click(save_btn_selector)
+            
+            # 9. Wait for completion notification or drawer closing
+            await self.page.wait_for_timeout(5000)
+            
+            logger.info("✅ Notice Period LWD updated successfully!")
+            return True
+            
+        except PlaywrightTimeoutError as e:
+            logger.error(f"Timeout while interacting with profile LWD fields: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to update last working day: {e}")
+            return False
+
     async def apply_to_recommended_jobs(self, max_jobs: int = 5, use_bulk_select: bool = True) -> dict:
         """
         Apply to recommended Naukri jobs.
@@ -292,6 +379,14 @@ class NaukriJobApply:
         }
         
         try:
+            # First, update the last working day on the profile page
+            logger.info("Step 0: Updating profile last working day (current date + 60 days)...")
+            lwd_success = await self.update_last_working_day(days_offset=60)
+            if not lwd_success:
+                logger.warning("⚠️ Failed to update profile last working day. Proceeding with application flow anyway.")
+            else:
+                logger.info("✅ Profile last working day updated successfully.")
+
             # Navigate to recommended jobs page
             logger.info(f"Navigating to: {self.RECOMMENDED_JOBS_URL}")
             await self.page.goto(self.RECOMMENDED_JOBS_URL, wait_until='domcontentloaded', timeout=60000)
