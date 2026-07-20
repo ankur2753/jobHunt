@@ -323,6 +323,13 @@ class LinkedInFormFiller:
                     
                     # Fill the field if we have an answer
                     if answer:
+                        try:
+                            self.vector_db.store_answered_question(
+                                question.question_text, answer, category='learned_answers', tags=['linkedin']
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to store answered question in vector DB: {e}")
+
                         fill_success = await form_filler._fill_form_field(question, answer)
                         if fill_success:
                             logger.info(f"✓ Filled: {question.question_text} → {answer}")

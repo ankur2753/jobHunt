@@ -196,6 +196,81 @@ class VectorDBManager:
     def query_personal_profile(self, query, n_results=5):
         return self.search_personal_details(query, n_results=n_results)
 
+    def _get_known_employers(self) -> List[str]:
+        """Extract list of known previous and current employers from profile JSON files."""
+        known = set()
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        
+        # 1. personal_details.json
+        p_path = os.path.join(repo_root, 'personal_details', 'personal_details.json')
+        if os.path.exists(p_path):
+            try:
+                with open(p_path, 'r', encoding='utf-8') as f:
+                    p_data = json.load(f)
+                    for exp in p_data.get('experience', []):
+                        if isinstance(exp, dict) and exp.get('company'):
+                            known.add(exp['company'].strip().lower())
+            except Exception as e:
+                logging.debug(f"Error reading personal_details.json for employers: {e}")
+                
+        # 2. custom_details.json
+        c_path = os.path.join(repo_root, 'personal_details', 'custom_details.json')
+        if os.path.exists(c_path):
+            try:
+                with open(c_path, 'r', encoding='utf-8') as f:
+                    c_data = json.load(f)
+                    if c_data.get('current_firm'):
+                        known.add(str(c_data['current_firm']).strip().lower())
+            except Exception as e:
+                logging.debug(f"Error reading custom_details.json for employers: {e}")
+                
+        return [emp for emp in known if emp]
+
+    def evaluate_canonical_question(self, question: str) -> Optional[AnswerCandidate]:
+        """
+        Deterministically answer canonical questions (e.g. previous employment checks)
+        using structured user profile facts before resorting to vector similarity.
+        """
+        if not question:
+            return None
+            
+        q_lower = question.strip().lower()
+        
+        # Patterns for company employment history checks
+        patterns = [
+            r'(?:worked for|worked at|employed by|employed with|associated with|previously worked|employed in)\s+([A-Za-z0-9\s]+?)(?:\?|\s+or\s+|\Z)',
+            r'previously\s+(?:been\s+)?employed\s+(?:with|by|at)\s+([A-Za-z0-9\s]+?)(?:\?|\s+or\s+|\Z)',
+            r'previously\s+(?:worked|associated)\s+(?:with|for|at)\s+([A-Za-z0-9\s]+?)(?:\?|\s+or\s+|\Z)',
+            r'ever\s+worked\s+(?:at|for|with)\s+([A-Za-z0-9\s]+?)(?:\?|\s+or\s+|\Z)'
+        ]
+        
+        target_company = None
+        for pat in patterns:
+            m = re.search(pat, q_lower, re.IGNORECASE)
+            if m:
+                extracted = m.group(1).strip()
+                if extracted not in ('this company', 'the company', 'our company', 'us'):
+                    target_company = extracted
+                    break
+
+        if target_company:
+            known_employers = self._get_known_employers()
+            is_match = any(
+                target_company in emp or emp in target_company 
+                for emp in known_employers
+            )
+            ans = "Yes" if is_match else "No"
+            return AnswerCandidate(
+                answer_text=ans,
+                confidence=1.0,
+                source_key="canonical_employer_check",
+                source_category="canonical_rules",
+                should_autofill=True,
+                reasoning=f"Canonical rule: '{target_company}' {'found' if is_match else 'not found'} in known employers {known_employers}"
+            )
+            
+        return None
+
     def answer_question(
         self,
         question: str,
@@ -244,6 +319,11 @@ class VectorDBManager:
         Returns:
             List of AnswerCandidate objects sorted by confidence (highest first)
         """
+        # Query canonical rules first
+        canonical = self.evaluate_canonical_question(question)
+        if canonical:
+            return [canonical]
+
         # Query vector DB
         query_results = self.search_personal_details(question, n_results=n_candidates)
         
@@ -517,6 +597,22 @@ class VectorDBManager:
             embeddings=[embedding]
         )
         
+        # Atomic write-back to custom_details.json for persistent structured facts
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            c_path = os.path.join(repo_root, 'personal_details', 'custom_details.json')
+            c_data = {}
+            if os.path.exists(c_path):
+                with open(c_path, 'r', encoding='utf-8') as f:
+                    c_data = json.load(f)
+            c_data[normalized_key] = answer
+            temp_path = f"{c_path}.tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(c_data, f, indent=4)
+            os.replace(temp_path, c_path)
+        except Exception as e:
+            logging.debug(f"Could not update custom_details.json: {e}")
+
         return {
             'success': True,
             'stored_key': doc_id,
