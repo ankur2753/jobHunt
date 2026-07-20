@@ -56,30 +56,36 @@ See [Instructions/ARCHITECTURE.md](Instructions/ARCHITECTURE.md) for the full de
 
 ## How It Works
 
-### Semantic Form Filling
+### Semantic Form Filling & Canonical Rules
 
-Application forms are filled by matching each detected question against a personal profile stored in a vector database:
+Application forms are filled using a hybrid approach combining **Deterministic Canonical Rules** and **Semantic Vector Search**:
 
 ```
-chatbot_form_filler.py       → detect questions (label → placeholder → aria-label)
-   → vector_db_manager.py    → SentenceTransformer encode + ChromaDB cosine search
-   → answer_validators.py    → normalize (salary, experience, phone, dates, …)
-   → Playwright              → fill field → submit
+Question Detected → Deterministic Canonical Rule Evaluator (Company Employment Checks → 1.0 Conf "Yes"/"No")
+                        ↓ (if unmatched)
+                  SentenceTransformer Encode + ChromaDB Vector Cosine Search
+                        ↓
+                  Answer Normalization & Field Type Validation
+                        ↓
+                  Fill Form Field & Store Learned Answer (ChromaDB + custom_details.json Writeback)
 ```
 
-Answers are auto-filled based on a confidence score; low-confidence questions fall back to prompting the user.
+1. **Deterministic Canonical Evaluator** (`evaluate_canonical_question`): First checks if the question is a company employment check (e.g., *"Have you previously worked for Google or MongoDB?"*). Compares against known employers in `personal_details.json` and `custom_details.json`. Returns `1.0` confidence answers (`"Yes"` / `"No"`) instantly without prompting the user or degrading on entity embedding distance.
+2. **Semantic Vector Search** (`VectorDBManager`): If unmatched by canonical rules, embeds the question using `all-MiniLM-L6-v2` and queries ChromaDB for vector similarity matching against personal profile facts and previously learned Q&A entries.
+3. **Cross-Portal Persistence & Atomic Writeback**: User answers and learned facts are persisted into ChromaDB (`learned_answers` category) and atomically written back to `personal_details/custom_details.json` across both Naukri and LinkedIn form fillers, enabling seamless cross-portal knowledge reuse.
 
 | Confidence | Action |
 |-----------|--------|
+| = 1.0 (Canonical Rule) | Auto-fill silently (Employment checks, exact profile matches) |
 | ≥ 0.90 | Auto-fill silently |
 | 0.65–0.89 | Auto-fill, log (threshold: Naukri 0.70, LinkedIn 0.65) |
 | 0.50–0.64 | Prompt user with suggestion |
 | < 0.50 | Skip, ask user |
 
-### Data Sources
+### Data Sources & Storage
 
-- **Vector DB** (`vector_db/`, ChromaDB) — source of truth for personal profile answers, populated from `setup.html` → `setup_data.py`.
-- **Legacy JSON** (`personal_details/`) — still read by the LinkedIn flow; being phased out.
+- **Vector DB** (`vector_db/`, ChromaDB) — persistent vector store for personal profile facts and learned Q&A entries, populated via `seed_profile_answers.py` and runtime form filler learning.
+- **Structured Profile JSON** (`personal_details/personal_details.json` & `custom_details.json`) — authoritative structured profile definition; `custom_details.json` receives atomic writeback when new facts are learned at runtime.
 - **Cookies** (`personal_details/*_cookies.json`) — Playwright session state for each portal.
 
 ---

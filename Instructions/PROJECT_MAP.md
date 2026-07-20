@@ -58,6 +58,7 @@ agent/
 │   │   ├── answer_validators.py
 │   │   ├── vector_db_manager.py
 │   │   ├── retry_utils.py
+│   │   ├── remote_logger.py          # Google Sheets & Firebase remote logger
 │   │   ├── naukri_selector_discovery.py
 │   │   ├── pattern_learner.py
 │   │   ├── connect_mcp.py
@@ -123,20 +124,22 @@ agent/
 
 ---
 
-## Data Flow
+## Data Flow & Knowledge Architecture
 
 ```
-setup.html → setup_data.py → vector_db/ (ChromaDB)
-                                    ↓
-orchestrator.py → naukri_login.py → browser (Playwright)
-                                    ↓
-               naukri_job_apply.py → job cards → apply button
-                                    ↓
-               naukri_form_filler.py → chatbot_form_filler.py
-                                    ↓
-               vector_db_manager.py → semantic match → auto-fill
-                                    ↓
-               answer_validators.py → normalize → submit
+setup.html / seed_profile_answers.py → vector_db/ (ChromaDB) + personal_details.json / custom_details.json
+                                                  ↓
+orchestrator.py → naukri_login.py / linkedin_form_filler.py → browser (Playwright)
+                                                  ↓
+             Form Question Detected (naukri_form_filler.py / linkedin_form_filler.py)
+                                                  ↓
+             1. evaluate_canonical_question() → company employer checks → 1.0 Conf ("Yes"/"No")
+                                                  ↓ (if unmatched)
+             2. VectorDBManager.answer_question_with_candidates() → ChromaDB cosine match (all-MiniLM-L6-v2)
+                                                  ↓
+             3. answer_validators.py → normalize & fill UI field
+                                                  ↓
+             4. store_answered_question() → ChromaDB upsert + atomic custom_details.json writeback
 ```
 
 ---
@@ -146,8 +149,13 @@ orchestrator.py → naukri_login.py → browser (Playwright)
 | Service | Purpose | Status |
 |---------|---------|--------|
 | Playwright (Chromium) | Browser automation | ✅ Active |
-| ChromaDB | Vector store for personal data | ✅ Active |
+| ChromaDB | Vector store for personal profile data & learned Q&A | ✅ Active |
 | SentenceTransformers | Semantic embeddings (`all-MiniLM-L6-v2`) | ✅ Active |
+| Canonical Rule Evaluator | Deterministic entity & employer check matching (1.0 conf) | ✅ Active |
+| Remote Logger (Google Sheets / Firebase) | Remote application logging to Google Sheets / Firebase | ✅ Active |
 | MCP Server | Expose tools to Claude Desktop | ✅ Partial |
 | Telegram Bot | Human-in-the-loop fallback | ❌ Planned |
-| OpenRouter / Azure OpenAI | LLM fallback for low-confidence fills | ❌ Planned |
+| OpenRouter / Azure OpenAI | LLM fallback for low-confidence fills | ✅ Active |
+| Firebase Firestore | Fallback remote application logging | ✅ Active |
+| OpenRouter / Azure OpenAI | LLM fallback for low-confidence fills | ✅ Active |
+| Telegram Bot | Human-in-the-loop fallback | ❌ Planned |
