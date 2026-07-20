@@ -261,48 +261,65 @@ class LinkedInFormFiller:
                         confidence = candidate.confidence
                         logger.debug(f"✓ High confidence match: {answer} ({confidence:.2f})")
                         stats.auto_filled += 1
-                    
-                    elif allow_human_input and candidate:
-                        # Low confidence - ask user
-                        logger.warning(f"⚠️ Low confidence: {candidate.answer_text} ({candidate.confidence:.2f})")
-                        user_input = input(f"\n❓ Question: {question.question_text}\n" +
-                                         f"   Suggested: {candidate.answer_text} ({candidate.confidence:.2f})\n" +
-                                         f"   Enter answer (press Enter to use suggestion, or type new answer): ").strip()
-                        
-                        if user_input:
-                            answer = user_input
-                            confidence = 1.0  # User provided
-                            logger.debug(f"✓ User provided answer: {answer}")
-                            self.session.manual_answers[question.question_text] = answer
-                        else:
-                            answer = candidate.answer_text
-                            confidence = candidate.confidence
-                            logger.debug(f"✓ Using suggestion: {answer}")
-                        
-                        stats.auto_filled += 1
-                    
-                    elif allow_human_input:
-                        # No semantic match - ask user
-                        logger.warning(f"⚠️ No semantic match found for: {question.question_text}")
-                        user_input = input(f"\n❓ Question: {question.question_text}\n" +
-                                         f"   No suggestion available.\n" +
-                                         f"   Enter answer (or press Enter to skip): ").strip()
-                        
-                        if user_input:
-                            answer = user_input
-                            confidence = 1.0  # User provided
-                            logger.debug(f"✓ User provided answer: {answer}")
-                            self.session.manual_answers[question.question_text] = answer
+                    else:
+                        # Try LLM fallback (Bridge)
+                        from scripts.common_stuff.llm_fallback import query_llm_fallback, get_api_key_and_provider
+                        api_key, _, _, _ = get_api_key_and_provider()
+                        if api_key:
+                            try:
+                                details = self.vector_db.get_all_details()
+                                profile_context = "\n".join(details.get("documents", []))
+                                llm_ans = await query_llm_fallback(question.question_text, options=None, profile_context=profile_context)
+                                if llm_ans:
+                                    answer = llm_ans
+                                    confidence = 0.99
+                                    logger.debug(f"✓ LLM fallback match: {answer}")
+                                    stats.auto_filled += 1
+                            except Exception as e:
+                                logger.error(f"Error in LLM fallback: {e}")
+
+                    if answer is None:
+                        if allow_human_input and candidate:
+                            # Low confidence - ask user
+                            logger.warning(f"⚠️ Low confidence: {candidate.answer_text} ({candidate.confidence:.2f})")
+                            user_input = input(f"\n❓ Question: {question.question_text}\n" +
+                                             f"   Suggested: {candidate.answer_text} ({candidate.confidence:.2f})\n" +
+                                             f"   Enter answer (press Enter to use suggestion, or type new answer): ").strip()
+                            
+                            if user_input:
+                                answer = user_input
+                                confidence = 1.0  # User provided
+                                logger.debug(f"✓ User provided answer: {answer}")
+                                self.session.manual_answers[question.question_text] = answer
+                            else:
+                                answer = candidate.answer_text
+                                confidence = candidate.confidence
+                                logger.debug(f"✓ Using suggestion: {answer}")
+                            
                             stats.auto_filled += 1
+                        
+                        elif allow_human_input:
+                            # No semantic match - ask user
+                            logger.warning(f"⚠️ No semantic match found for: {question.question_text}")
+                            user_input = input(f"\n❓ Question: {question.question_text}\n" +
+                                             f"   No suggestion available.\n" +
+                                             f"   Enter answer (or press Enter to skip): ").strip()
+                            
+                            if user_input:
+                                answer = user_input
+                                confidence = 1.0  # User provided
+                                logger.debug(f"✓ User provided answer: {answer}")
+                                self.session.manual_answers[question.question_text] = answer
+                                stats.auto_filled += 1
+                            else:
+                                logger.debug("→ Skipped by user")
+                                stats.skipped += 1
+                                continue
                         else:
-                            logger.debug("→ Skipped by user")
+                            # No match and no human input allowed
+                            logger.debug("→ No match and human input disabled")
                             stats.skipped += 1
                             continue
-                    else:
-                        # No match and no human input allowed
-                        logger.debug("→ No match and human input disabled")
-                        stats.skipped += 1
-                        continue
                     
                     # Fill the field if we have an answer
                     if answer:

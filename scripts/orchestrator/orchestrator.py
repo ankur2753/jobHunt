@@ -45,38 +45,63 @@ class LinkedInPlaywright:
 
     async def setup_driver(self, headless: bool = False):
         p = await async_playwright().start()
-        self.browser = await p.chromium.launch(headless=headless, args=["--remote-debugging-port=3000"])
-        self.ws_endpoint = "http://localhost:3000"
         
-        logger.debug(f"Cookies file: {self.cookies_file}")
-        logger.debug(f"Cookies file exists: {os.path.exists(self.cookies_file)}")
-        # If the cookie file exists, load the context with that state
-        if os.path.exists(self.cookies_file):
-            logger.info("✅ Loading existing session state...")
-            self.context = await self.browser.new_context(
-                storage_state=self.cookies_file,
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-        else:
-            logger.warning("⚠️ No session file found. Starting fresh context.")
-            self.context = await self.browser.new_context()
-        
-        self.page = await self.context.new_page()
-
-        # Update port_info.json with session memory
+        connected = False
         if PORT_INFO_FILE.exists():
-            with open(PORT_INFO_FILE, 'r+') as f:
-                try:
+            try:
+                with open(PORT_INFO_FILE, 'r') as f:
                     data = json.load(f)
-                except json.JSONDecodeError:
-                    data = {}
-                data["ws_endpoint"] = self.ws_endpoint
-                data["cookies_file"] = str(self.cookies_file)
-                f.seek(0)
-                json.dump(data, f)
-                f.truncate()
-        
-        logger.debug(f"Browser endpoint registered: {self.ws_endpoint}")
+                    ws = data.get("ws_endpoint", "http://localhost:3000")
+                logger.info(f"🔄 Attempting to connect to existing browser at {ws}...")
+                self.browser = await p.chromium.connect_over_cdp(ws)
+                self.ws_endpoint = ws
+                if self.browser.contexts:
+                    self.context = self.browser.contexts[0]
+                    if self.context.pages:
+                        self.page = self.context.pages[0]
+                    else:
+                        self.page = await self.context.new_page()
+                else:
+                    self.context = await self.browser.new_context()
+                    self.page = await self.context.new_page()
+                logger.info("✅ Connected to existing browser session successfully!")
+                connected = True
+            except Exception as e:
+                logger.warning(f"⚠️ Could not connect to existing browser: {e}. Launching new one...")
+
+        if not connected:
+            self.browser = await p.chromium.launch(headless=headless, args=["--remote-debugging-port=3000"])
+            self.ws_endpoint = "http://localhost:3000"
+            
+            logger.debug(f"Cookies file: {self.cookies_file}")
+            logger.debug(f"Cookies file exists: {os.path.exists(self.cookies_file)}")
+            # If the cookie file exists, load the context with that state
+            if os.path.exists(self.cookies_file):
+                logger.info("✅ Loading existing session state...")
+                self.context = await self.browser.new_context(
+                    storage_state=self.cookies_file,
+                    user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                )
+            else:
+                logger.warning("⚠️ No session file found. Starting fresh context.")
+                self.context = await self.browser.new_context()
+            
+            self.page = await self.context.new_page()
+
+            # Update port_info.json with session memory
+            if PORT_INFO_FILE.exists():
+                with open(PORT_INFO_FILE, 'r+') as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError:
+                        data = {}
+                    data["ws_endpoint"] = self.ws_endpoint
+                    data["cookies_file"] = str(self.cookies_file)
+                    f.seek(0)
+                    json.dump(data, f)
+                    f.truncate()
+            
+            logger.debug(f"Browser endpoint registered: {self.ws_endpoint}")
 
 
     async def is_logged_in(self):

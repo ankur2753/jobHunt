@@ -26,29 +26,66 @@ _naukri_session = None
 async def get_naukri_session() -> NaukriPlaywright:
     """Helper to get or initialize the NaukriPlaywright session."""
     global _naukri_session
-    # Ensure lock is handled
-    if not get_lock():
-        raise Exception("Another process is currently holding the lock for the browser session.")
-        
+    
     if _naukri_session is None:
-        _naukri_session = NaukriPlaywright()
-        await _naukri_session.setup_driver(headless=False)
-        if not await _naukri_session.is_logged_in():
-            raise Exception("Not logged into Naukri. Please run orchestrator manually to login and save session.")
+        # Check if we can connect to an existing running browser first
+        session = NaukriPlaywright()
+        connected = False
+        if PORT_INFO_FILE.exists():
+            try:
+                with open(PORT_INFO_FILE, 'r') as f:
+                    data = json.load(f)
+                    ws = data.get("ws_endpoint")
+                if ws:
+                    await session.setup_driver(headless=False)
+                    # Test if the connection works and we are logged in
+                    if await session.is_logged_in():
+                        _naukri_session = session
+                        connected = True
+            except Exception:
+                pass
+                
+        if not connected:
+            # We must acquire the lock to launch a new browser
+            if not get_lock():
+                raise Exception("Another process is currently holding the lock for the browser session.")
+            _naukri_session = NaukriPlaywright()
+            await _naukri_session.setup_driver(headless=False)
+            if not await _naukri_session.is_logged_in():
+                raise Exception("Not logged into Naukri. Please run orchestrator manually to login and save session.")
+                
     return _naukri_session
 
 async def get_linkedin_session() -> LinkedInPlaywright:
     """Helper to get or initialize the LinkedInPlaywright session."""
     global _linkedin_session
-    # Ensure lock is handled
-    if not get_lock():
-        raise Exception("Another process is currently holding the lock for the browser session.")
-        
+    
     if _linkedin_session is None:
-        _linkedin_session = LinkedInPlaywright()
-        await _linkedin_session.setup_driver(headless=False)
-        if not await _linkedin_session.is_logged_in():
-            raise Exception("Not logged into LinkedIn. Please run orchestrator manually to login and save session.")
+        # Check if we can connect to an existing running browser first
+        session = LinkedInPlaywright()
+        connected = False
+        if PORT_INFO_FILE.exists():
+            try:
+                with open(PORT_INFO_FILE, 'r') as f:
+                    data = json.load(f)
+                    ws = data.get("ws_endpoint")
+                if ws:
+                    await session.setup_driver(headless=False)
+                    if await session.is_logged_in():
+                        _linkedin_session = session
+                        connected = True
+            except Exception:
+                pass
+                
+        if not connected:
+            # We must acquire the lock to launch a new browser
+            if not get_lock():
+                raise Exception("Another process is currently holding the lock for the browser session.")
+            _linkedin_session = LinkedInPlaywright()
+            await _linkedin_session.setup_driver(headless=False)
+            if not await _linkedin_session.is_logged_in():
+                raise Exception("Not logged into LinkedIn. Please run orchestrator manually to login and save session.")
+                
     return _linkedin_session
 
 @mcp.tool()
@@ -58,7 +95,22 @@ async def get_browser_control_details() -> str:
     This allows an LLM or an external tool (like the default Playwright MCP tools) to take full control 
     of the active browser session by connecting to it via Playwright (e.g. p.chromium.connect_over_cdp(ws_endpoint)).
     """
-    # Ensure port_info.json is populated by trying to get a session if none exists
+    # 1. First, check if port_info.json already exists and has a valid ws_endpoint
+    if PORT_INFO_FILE.exists():
+        with open(PORT_INFO_FILE, 'r') as f:
+            try:
+                data = json.load(f)
+                if data.get("ws_endpoint"):
+                    return json.dumps({
+                        "message": "You can connect to this active browser using the details below.",
+                        "ws_endpoint": data.get("ws_endpoint"),
+                        "cookies_file": data.get("cookies_file"),
+                        "lock_time": data.get("lock_time")
+                    }, indent=2)
+            except json.JSONDecodeError:
+                pass
+                
+    # 2. If no browser is currently active, try to start a new LinkedIn session
     if not _linkedin_session and not _naukri_session:
         try:
             await get_linkedin_session()
@@ -168,6 +220,87 @@ async def send_linkedin_connection_invite(profile_url: str, connection_reason: s
         return result
     except Exception as e:
         return f"Error sending LinkedIn connection invite: {str(e)}"
+
+@mcp.tool()
+async def browser_navigate(url: str, portal: str = "naukri") -> str:
+    """
+    Navigate the active browser page to the specified URL.
+    
+    Args:
+        url: The URL to navigate to.
+        portal: The portal session to use ('linkedin' or 'naukri').
+    """
+    try:
+        session = await get_linkedin_session() if portal == "linkedin" else await get_naukri_session()
+        await session.page.goto(url)
+        return f"Successfully navigated to {url}"
+    except Exception as e:
+        return f"Error navigating to {url}: {str(e)}"
+
+@mcp.tool()
+async def browser_click(selector: str, portal: str = "naukri") -> str:
+    """
+    Click the element matching the specified selector on the active page.
+    
+    Args:
+        selector: The CSS or XPath selector of the element to click.
+        portal: The portal session to use ('linkedin' or 'naukri').
+    """
+    try:
+        session = await get_linkedin_session() if portal == "linkedin" else await get_naukri_session()
+        await session.page.click(selector)
+        return f"Successfully clicked element: {selector}"
+    except Exception as e:
+        return f"Error clicking element {selector}: {str(e)}"
+
+@mcp.tool()
+async def browser_fill(selector: str, value: str, portal: str = "naukri") -> str:
+    """
+    Fill the input element matching the specified selector with the given value.
+    
+    Args:
+        selector: The CSS or XPath selector of the input element.
+        value: The text value to enter.
+        portal: The portal session to use ('linkedin' or 'naukri').
+    """
+    try:
+        session = await get_linkedin_session() if portal == "linkedin" else await get_naukri_session()
+        await session.page.fill(selector, value)
+        return f"Successfully filled element {selector} with value"
+    except Exception as e:
+        return f"Error filling element {selector}: {str(e)}"
+
+@mcp.tool()
+async def browser_get_content(portal: str = "naukri") -> str:
+    """
+    Get the text content (inner text) of the body of the active page.
+    
+    Args:
+        portal: The portal session to use ('linkedin' or 'naukri').
+    """
+    try:
+        session = await get_linkedin_session() if portal == "linkedin" else await get_naukri_session()
+        content = await session.page.inner_text("body")
+        return content
+    except Exception as e:
+        return f"Error getting content: {str(e)}"
+
+@mcp.tool()
+async def browser_screenshot(path: str = "logs/browser_screenshot.png", portal: str = "naukri") -> str:
+    """
+    Take a screenshot of the active page and save it to the specified path.
+    
+    Args:
+        path: The path where the screenshot will be saved.
+        portal: The portal session to use ('linkedin' or 'naukri').
+    """
+    try:
+        session = await get_linkedin_session() if portal == "linkedin" else await get_naukri_session()
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        await session.page.screenshot(path=path)
+        return f"Screenshot saved successfully to {path}"
+    except Exception as e:
+        return f"Error taking screenshot: {str(e)}"
 
 if __name__ == "__main__":
     # Start the MCP server using stdio transport

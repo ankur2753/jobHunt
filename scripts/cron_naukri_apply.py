@@ -11,9 +11,12 @@ from scripts.cookie_management_login.naukri_login import NaukriPlaywright
 from scripts.job_scraping.naukri_job_apply import NaukriJobApply
 from scripts.common_stuff.vector_db_manager import VectorDBManager
 from scripts.orchestrator.orchestrator import get_lock, release_lock
+from scripts.common_stuff.logging_setup import setup_logging
 
 async def run_apply():
+    log_path = setup_logging(run_name="naukri_cron")
     print(f"[{datetime.datetime.now()}] Starting automated cron job...")
+    print(f"📝 Full log will be written to: {log_path}")
     if not get_lock():
         print("Could not acquire lock. Another process is running.")
         return
@@ -36,6 +39,7 @@ async def run_apply():
         results = await applicator.apply_to_recommended_jobs(max_jobs=5)
         
         print(f"📊 Auto-apply complete. Successful: {results['successful']}, Failed: {results['failed']}, Skipped: {results['skipped']}")
+        print(f"📁 Dashboard log updated. Check logs/applications_dashboard.json and logs/applications_dashboard.csv")
 
         # Note: Profile Last Working Day update (current date + 60 days) is handled
         # automatically at the beginning of applicator.apply_to_recommended_jobs()

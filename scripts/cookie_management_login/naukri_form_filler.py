@@ -663,7 +663,27 @@ class NaukriFormFiller:
                     await self._finish(stats, q, pick[0], 'auto')
                     return
 
-            # 3) Low confidence → ask the human if allowed.
+            # 3) LLM Fallback (Bridge)
+            from scripts.common_stuff.llm_fallback import query_llm_fallback, get_api_key_and_provider
+            api_key, _, _, _ = get_api_key_and_provider()
+            if api_key:
+                try:
+                    details = self.vector_db.get_all_details()
+                    profile_context = "\n".join(details.get("documents", []))
+                    opt_list = [t for t, _ in options]
+                    llm_ans = await query_llm_fallback(q, options=opt_list, profile_context=profile_context)
+                    if llm_ans:
+                        pick = self._pick_best_chip(llm_ans, options)
+                        if pick:
+                            await self._click_option(pick[1])
+                            await self._finish(stats, q, pick[0], 'llm_fallback', conf=0.99)
+                            return
+                except Exception as e:
+                    logger.error(f"Error in LLM fallback: {e}")
+            else:
+                logger.warning("⚠️ LLM Fallback: Bypassed because no active API key was found (set GEMINI_API_KEY or OPENROUTER_API_KEY in your environment or .env).")
+
+            # 4) Low confidence → ask the human if allowed.
             if allow_human_input:
                 picked = await self._prompt_for_option(q, options, best_text)
                 if picked:
@@ -673,7 +693,7 @@ class NaukriFormFiller:
                     stats['prompted'] += 1
                     return
 
-            # 4) Best-effort guess (top candidate even if <0.6), then fallback.
+            # 5) Best-effort guess (top candidate even if <0.6), then fallback.
             if best_text:
                 pick = self._pick_best_chip(best_text, options)
                 if pick:
@@ -690,7 +710,23 @@ class NaukriFormFiller:
             tag = 'auto'
             if confident:
                 value = best_text
-            elif allow_human_input:
+            else:
+                from scripts.common_stuff.llm_fallback import query_llm_fallback, get_api_key_and_provider
+                api_key, _, _, _ = get_api_key_and_provider()
+                if api_key:
+                    try:
+                        details = self.vector_db.get_all_details()
+                        profile_context = "\n".join(details.get("documents", []))
+                        llm_ans = await query_llm_fallback(q, options=None, profile_context=profile_context)
+                        if llm_ans:
+                            value = llm_ans
+                            tag = 'llm_fallback'
+                    except Exception as e:
+                        logger.error(f"Error in LLM fallback: {e}")
+                else:
+                    logger.warning("⚠️ LLM Fallback: Bypassed because no active API key was found (set GEMINI_API_KEY or OPENROUTER_API_KEY in your environment or .env).")
+
+            if value is None and allow_human_input:
                 value = await self._prompt_for_text(q, best_text)
                 if value:
                     self._learn(q, value)
@@ -701,8 +737,8 @@ class NaukriFormFiller:
                 tag = 'guess'
             await self._fill_text(state['text_el'], value)
             await self._finish(stats, q, value, tag,
-                               review=(tag != 'auto'),
-                               conf=(best.confidence if best else 0.0))
+                               review=(tag not in ('auto', 'llm_fallback')),
+                               conf=(best.confidence if best and tag == 'auto' else 0.99 if tag == 'llm_fallback' else 0.0))
             return
 
         # ---------- Unknown widget ----------
