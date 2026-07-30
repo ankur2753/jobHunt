@@ -1,0 +1,70 @@
+{
+    "name": "Jane Doe",
+    "email": "jane.doe@example.com",
+    "phone": "9876543210",
+    "country_code": "+91",
+    "location": "Bengaluru, Karnataka",
+    "linkedin": "https://www.linkedin.com/in/janedoe/",
+    "summary": "Software Engineer with 3+ years of experience in full-stack development, automated testing, and cloud microservices.",
+    "core_skills": [
+        "Python",
+        "JavaScript",
+        "React",
+        "SQL",
+        "AWS"
+    ],
+    "skills": [
+        "Python",
+        "JavaScript",
+        "React",
+        "Node.js",
+        "SQL",
+        "MongoDB",
+        "AWS",
+        "Docker",
+        "Kubernetes",
+        "Git",
+        "Playwright",
+        "REST APIs"
+    ],
+    "experience": [
+        {
+            "title": "Software Engineer",
+            "company": "Tech Corp",
+            "duration": "Jan 2023 - Present",
+            "bullets": [
+                "Developed full-stack web applications and scalable REST APIs.",
+                "Automated end-to-end testing workflows using Python and Playwright.",
+                "Optimized database queries reducing average API response times by 30%."
+            ]
+        }
+    ],
+    "education": [
+        {
+            "degree": "B.E., Computer Science Engineering",
+            "school": "State Engineering College",
+            "year": "2023"
+        }
+    ],
+    "salary": {
+        "current": "12 LPA",
+        "expected for software development roles": "16-20 LPA",
+        "expected for qa roles": "14-18 LPA",
+        "expected for any other role": "18 LPA"
+    },
+    "total_experience": "3 years",
+    "skills_experience": {
+        "Python": "3 years",
+        "JavaScript": "3 years",
+        "React": "2 years",
+        "Node.js": "3 years",
+        "SQL": "3 years",
+        "MongoDB": "3 years",
+        "AWS": "3 years",
+        "Docker": "2 years",
+        "Kubernetes": "2 years",
+        "Git": "3 years",
+        "Playwright": "2 years",
+        "REST APIs": "3 years"
+    }
+}

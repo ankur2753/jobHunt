@@ -3,6 +3,7 @@ import os
 import json
 import asyncio
 import logging
+import argparse
 from pathlib import Path
 from playwright.async_api import async_playwright, expect
 
@@ -25,6 +26,7 @@ from scripts.job_scraping.linkedin_job_scraper import LinkedInJobScraper
 from scripts.cookie_management_login.naukri_login import NaukriPlaywright
 from scripts.cookie_management_login.instahyre_login import InstahyrePlaywright
 from scripts.networking.linkedin_cold_message import LinkedInColdMessenger
+from scripts.networking.linkedin_referral_helper import LinkedInReferralHelper
 from scripts.cookie_management_login.naukri_form_filler import NaukriFormFiller
 from scripts.cookie_management_login.linkedin_form_filler import LinkedInFormFiller
 from scripts.common_stuff.vector_db_manager import VectorDBManager
@@ -33,6 +35,46 @@ from scripts.common_stuff.vector_db_manager import VectorDBManager
 COMMON_STUFF_DIR = Path(__file__).parent.parent / "common_stuff"
 PORT_INFO_FILE = COMMON_STUFF_DIR / "port_info.json"
 LOCK_EXPIRY = 300  # 5 minutes
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Job Hunt Orchestrator")
+    parser.add_argument(
+        '--review',
+        action='store_true',
+        default=None,
+        help='Force review mode enabled (pause before submit)'
+    )
+    parser.add_argument(
+        '--no-review',
+        action='store_true',
+        default=None,
+        help='Force review mode disabled (fully automated)'
+    )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Enable verbose debug logging'
+    )
+    return parser.parse_args()
+
+def compute_review_mode(portal: str, args=None) -> bool:
+    """
+    Compute effective review_mode for portal:
+    - If --review passed: review_mode = True for all portals.
+    - If --no-review passed: review_mode = False for all portals.
+    - If neither passed: Naukri gets False, LinkedIn gets True.
+    """
+    if args is not None:
+        if getattr(args, 'review', None):
+            return True
+        if getattr(args, 'no_review', None):
+            return False
+    if portal.lower() == 'naukri':
+        return False
+    elif portal.lower() == 'linkedin':
+        return True
+    return False
+
 
 class LinkedInPlaywright:
     def __init__(self, cookies_file: str = "../../personal_details/linkedin_cookies.json"):
@@ -174,10 +216,13 @@ def release_lock():
             print(f"Error releasing lock: {e}")
 
 
-async def main():
+async def main(args=None):
     """
     Main function for the orchestrator.
     """
+    if args is None:
+        args = parse_args()
+
     if not get_lock():
         return
 
@@ -220,7 +265,7 @@ async def main():
             return
 
         print("What would you like to do?")
-        print("1. Send cold messages")
+        print("1. Discover referrals and draft messages")
         print("2. Apply on job portals")
         print("3. Scrape jobs posted in last 24 hours")
         print("4. Auto-fill forms (NEW - Phase 3)")
@@ -228,17 +273,14 @@ async def main():
         choice = input("Enter your choice (1, 2, 3 or 4): ")
 
         if choice == '1':
-            print("Starting the process to send cold messages...")
-            profile_urls = input("Enter LinkedIn profile URLs separated by commas: ").split(",")
-            profile_urls = [url.strip() for url in profile_urls if url.strip()]
-            if not profile_urls:
-                print("No profile URLs provided. Aborting cold message flow.")
+            if website_choice == '1':
+                print("Starting LinkedIn bulk referral discovery & message drafting...")
+                limit_str = input("Enter number of pending jobs to process (default 5): ").strip()
+                limit = int(limit_str) if limit_str.isdigit() else 5
+                helper = LinkedInReferralHelper(browser_manager.page)
+                await helper.process_jobs(limit)
             else:
-                reason = input("Enter a brief reason for connecting / outreach context (optional): ").strip() or None
-                messenger = LinkedInColdMessenger(browser_manager.page)
-                results = await messenger.send_bulk_outreach(profile_urls, reason)
-                for result in results:
-                    print(result)
+                print("Referral discovery is only supported for LinkedIn.")
         elif choice == '2':
             print("Starting the process to apply on job portals...")
             # Here you would call the script for applying on job portals
@@ -268,8 +310,9 @@ async def main():
                 max_apps_str = input("Maximum number of applications (default 5): ").strip() or "5"
                 max_apps = int(max_apps_str)
 
-                applicator = LinkedInJobApply(browser_manager.page)
-                await applicator.apply_to_jobs(job_title, location)
+                review_mode = compute_review_mode('linkedin', args)
+                applicator = LinkedInJobApply(browser_manager.page, review_mode=review_mode)
+                await applicator.apply_to_jobs(job_title, location, review_mode=review_mode)
             elif website_choice == '2':
                 print("\n🤖 Starting Naukri Auto-Apply Process...")
                 print("="*60)
@@ -286,11 +329,12 @@ async def main():
                 print("-"*60)
                 
                 try:
+                    review_mode = compute_review_mode('naukri', args)
                     # Initialize Naukri job applicator
-                    applicator = NaukriJobApply(browser_manager.page, vector_db)
+                    applicator = NaukriJobApply(browser_manager.page, vector_db, review_mode=review_mode)
                     
                     # Auto-apply to jobs in batch of 5
-                    results = await applicator.apply_to_recommended_jobs(max_jobs=max_jobs)
+                    results = await applicator.apply_to_recommended_jobs(max_jobs=max_jobs, review_mode=review_mode)
                     
                     # Print summary
                     print("\n" + "="*60)
@@ -372,11 +416,13 @@ async def main():
                 print("\n🔄 Processing LinkedIn job application...")
                 print("-"*60)
                 
+                review_mode = compute_review_mode('linkedin', args)
                 form_filler = LinkedInFormFiller(
                     browser_manager.page,
                     vector_db,
                     confidence_threshold=0.65,  # LinkedIn balanced threshold
-                    enable_logging=True
+                    enable_logging=True,
+                    review_mode=review_mode
                 )
                 
                 try:
@@ -385,7 +431,8 @@ async def main():
                         max_questions=None,
                         dry_run=dry_run,
                         allow_human_input=allow_human,
-                        submit_form=submit
+                        submit_form=submit,
+                        review_mode=review_mode
                     )
                     
                     # Print results
@@ -447,11 +494,13 @@ async def main():
                 print("\n🔄 Processing Naukri job application...")
                 print("-"*60)
                 
+                review_mode = compute_review_mode('naukri', args)
                 form_filler = NaukriFormFiller(
                     browser_manager.page,
                     vector_db,
                     confidence_threshold=0.70,  # Naukri stricter threshold
-                    enable_logging=True
+                    enable_logging=True,
+                    review_mode=review_mode
                 )
                 
                 try:
@@ -460,7 +509,8 @@ async def main():
                         max_questions=None,
                         dry_run=dry_run,
                         allow_human_input=allow_human,
-                        submit_form=submit
+                        submit_form=submit,
+                        review_mode=review_mode
                     )
                     
                     # Print results
@@ -510,4 +560,5 @@ async def main():
         release_lock()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cli_args = parse_args()
+    asyncio.run(main(cli_args))

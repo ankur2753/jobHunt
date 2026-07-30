@@ -91,7 +91,8 @@ class LinkedInFormFiller:
         page: Page,
         vector_db_manager: VectorDBManager,
         confidence_threshold: float = 0.65,  # LinkedIn: balanced threshold
-        enable_logging: bool = True
+        enable_logging: bool = True,
+        review_mode: bool = True
     ):
         """
         Initialize LinkedIn form filler.
@@ -101,11 +102,13 @@ class LinkedInFormFiller:
             vector_db_manager: VectorDBManager instance for answer lookup
             confidence_threshold: Min confidence for auto-fill (LinkedIn: 0.65)
             enable_logging: Whether to log all actions
+            review_mode: Whether review mode is enabled (default: True for LinkedIn)
         """
         self.page = page
         self.vector_db = vector_db_manager
         self.confidence_threshold = confidence_threshold
         self.enable_logging = enable_logging
+        self.review_mode = review_mode
         self.answer_normalizer = AnswerNormalizer()
         
         if enable_logging:
@@ -119,7 +122,8 @@ class LinkedInFormFiller:
         max_questions: Optional[int] = None,
         dry_run: bool = False,
         allow_human_input: bool = True,
-        submit_form: bool = False
+        submit_form: bool = False,
+        review_mode: Optional[bool] = None
     ) -> LinkedInFormFillingSession:
         """
         Main entry point: Fill LinkedIn job application form.
@@ -130,11 +134,13 @@ class LinkedInFormFiller:
             dry_run: If True, only detect without filling
             allow_human_input: If True, ask user for answers on low confidence (fallback)
             submit_form: If True, submit form after filling (CAUTION: actual application!)
+            review_mode: Optional override for review mode
         
         Returns:
             LinkedInFormFillingSession with results
         """
-        logger.info(f"Starting LinkedIn job application filling for: {job_url}")
+        effective_review_mode = self.review_mode if review_mode is None else review_mode
+        logger.info(f"Starting LinkedIn job application filling for: {job_url} (review_mode={effective_review_mode})")
         
         # Extract job ID from URL
         job_id = self._extract_job_id_from_url(job_url)
@@ -183,8 +189,12 @@ class LinkedInFormFiller:
             
             self.session.form_stats = form_stats
             
-            # Step 7: Optional submit
-            if submit_form and not dry_run:
+            # Step 7: Optional submit or Review Mode Pause
+            if effective_review_mode:
+                print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+                input("Press Enter after submitting to continue...")
+                self.session.status = "partial" if not dry_run else "completed"
+            elif submit_form and not dry_run:
                 logger.warning("⚠️ SUBMITTING FORM - This will create an actual application!")
                 await self._submit_form()
                 self.session.status = "completed"
@@ -205,6 +215,20 @@ class LinkedInFormFiller:
         
         finally:
             self.session.end_time = datetime.now()
+            try:
+                from scripts.common_stuff.remote_logger import log_application_to_remote
+                q_answered = self.session.form_stats.auto_filled if self.session.form_stats else 0
+                log_application_to_remote(
+                    job_title=self.session.job_title or "Unknown Job",
+                    company=self.session.company_name or "Unknown Company",
+                    portal="LinkedIn",
+                    status=self.session.status,
+                    timestamp=self.session.end_time.isoformat(),
+                    questions_answered=q_answered
+                )
+                logger.info("✅ Remote logging dispatched for LinkedIn application.")
+            except Exception as e:
+                logger.warning(f"Failed to dispatch remote logging for LinkedIn application: {e}")
         
         return self.session
     

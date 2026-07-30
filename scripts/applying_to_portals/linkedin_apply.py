@@ -13,12 +13,13 @@ class LinkedInApply:
         'pay'
     ]
 
-    def __init__(self, db_manager=None):
+    def __init__(self, db_manager=None, review_mode: bool = True):
         if db_manager is not None:
             self.db_manager = db_manager
         else:
             from scripts.common_stuff.vector_db_manager import VectorDBManager
             self.db_manager = VectorDBManager()
+        self.review_mode = review_mode
 
     @staticmethod
     def _parse_compensation_value(text):
@@ -68,15 +69,20 @@ class LinkedInApply:
             'expected_ctc': compensation_values[-1] if len(compensation_values) > 1 else (compensation_values[0] if compensation_values else None)
         }
 
-    def apply_to_job(self, job_url):
+    def apply_to_job(self, job_url, review_mode=None):
         """
         Placeholder for the job application logic.
         This would include browser automation to fill forms.
         """
+        effective_review_mode = self.review_mode if review_mode is None else review_mode
         print(f"Applying to job at: {job_url}")
         comp_info = self.get_compensation_info()
         print(f"Retrieved compensation info: {comp_info}")
-        print("Application submitted (placeholder)")
+        if effective_review_mode:
+            print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+            input("Press Enter after submitting to continue...")
+        else:
+            print("Application submitted (placeholder)")
 
 if __name__ == '__main__':
     applier = LinkedInApply()

@@ -31,7 +31,7 @@ class AnswerNormalizer:
     SALARY_KEYWORDS = ['salary', 'ctc', 'lpa', 'lakhs', 'salary package', 'compensation', 'pay', 'wage']
     
     # Location-related keywords
-    LOCATION_KEYWORDS = ['location', 'city', 'area', 'place', 'work location', 'office', 'remote']
+    LOCATION_KEYWORDS = ['location', 'city', 'area', 'place', 'work location', 'office', 'remote', 'where']
     
     # Experience-related keywords
     EXPERIENCE_KEYWORDS = ['experience', 'years of experience', 'exp', 'work experience', 'prior experience']
@@ -40,7 +40,7 @@ class AnswerNormalizer:
     NOTICE_KEYWORDS = ['notice', 'notice period', 'notice days', 'joining', 'available', 'start']
     
     # Availability keywords
-    AVAILABILITY_KEYWORDS = ['available', 'availability', 'ready', 'can start', 'joining date']
+    AVAILABILITY_KEYWORDS = ['available', 'availability', 'ready', 'can start', 'joining date', 'join', 'when can']
     
     @staticmethod
     def normalize_salary(value: str) -> Optional[str]:

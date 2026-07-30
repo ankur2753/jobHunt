@@ -28,7 +28,7 @@ TAGS = ["naukri", "profile"]
 # ---------------------------------------------------------------------------
 SKILL_YEARS = {
     "C#": 3, ".NET": 3, ".NET Core": 3, "ASP.NET": 3, "ASP.NET Core": 3,
-    "JavaScript": 3, "TypeScript": 3, "React": 3, "React.js": 3, "Node.js": 3,
+    "JavaScript": 3, "TypeScript": 3, "React": 2, "React.js": 2, "Reactjs": 2, "Node.js": 3,
     "SQL": 3, "MSSQL": 3, "Python": 3, "Azure": 3, "Azure DevOps": 3,
     "AWS": 3, "MongoDB": 3, "Git": 3, "Kubernetes": 3, "Docker": 1,
     "Microservices": 3, "REST APIs": 3, "Web API": 3, "Machine Learning": 3,
@@ -60,11 +60,26 @@ def skill_qas():
     return qas
 
 
-# ---------------------------------------------------------------------------
-# Screening / logistics facts — (answer, [phrasings]).
-# ---------------------------------------------------------------------------
+# Load user details dynamically from personal_details/personal_details.json if present
+DETAILS_PATH = ROOT / "personal_details" / "personal_details.json"
+USER_DETAILS = {}
+if DETAILS_PATH.exists():
+    try:
+        with open(DETAILS_PATH, "r", encoding="utf-8") as f:
+            USER_DETAILS = json.load(f)
+    except Exception:
+        pass
+
+USER_NAME = USER_DETAILS.get("name", "Applicant Name")
+USER_EMAIL = USER_DETAILS.get("email", "applicant@example.com")
+USER_PHONE = USER_DETAILS.get("phone", "9876543210")
+USER_DOB = USER_DETAILS.get("dob", "01/01/2000")
+USER_LINKEDIN = USER_DETAILS.get("linkedin", "https://www.linkedin.com/in/applicant/")
+USER_COMPANY = USER_DETAILS.get("experience", [{}])[0].get("company", "Tech Corp") if USER_DETAILS.get("experience") else "Tech Corp"
+USER_TITLE = USER_DETAILS.get("experience", [{}])[0].get("title", "Software Engineer") if USER_DETAILS.get("experience") else "Software Engineer"
+
 SCREENING = [
-    ("3 years", [
+    (USER_DETAILS.get("total_experience", "3 years"), [
         "What is your total experience?",
         "How many years of experience do you have?",
         "Total years of experience",
@@ -81,21 +96,21 @@ SCREENING = [
         "When can you start?",
         "What is your official notice period?",
     ]),
-    ("12 LPA", [
+    (USER_DETAILS.get("salary", {}).get("current", "12 LPA"), [
         "What is your current CTC?",
         "What is your current salary?",
         "Current CTC",
         "What is your current annual compensation?",
         "What is your current fixed CTC?",
     ]),
-    ("16-20 LPA", [
+    (USER_DETAILS.get("salary", {}).get("expected for software development roles", "16-20 LPA"), [
         "What is your expected CTC?",
         "What is your expected salary?",
         "Expected CTC",
         "What are your salary expectations?",
         "What is your expected annual compensation?",
     ]),
-    ("Bangalore", [
+    (USER_DETAILS.get("location", "Bangalore"), [
         "What is your current location?",
         "What is your current city?",
         "Where are you currently located?",
@@ -169,7 +184,7 @@ SCREENING = [
         "What was your 10th percentage?",
         "What were your 10th marks?",
     ]),
-    ("Thomson Reuters", [
+    (USER_COMPANY, [
         "What is your current company?",
         "Current company name?",
         "Current company",
@@ -178,29 +193,29 @@ SCREENING = [
         "Name of your current employer",
         "Where are you currently working?",
     ]),
-    ("Associate Engineer", [
+    (USER_TITLE, [
         "What is your current designation?",
         "What is your current job title?",
         "What is your current role?",
     ]),
-    ("Ankur Kumar", [
+    (USER_NAME, [
         "What is your name?",
         "What is your full name?",
     ]),
-    ("ankur2753.ak@gmail.com", [
+    (USER_EMAIL, [
         "What is your email address?",
         "What is your email?",
     ]),
-    ("8002656334", [
+    (USER_PHONE, [
         "What is your phone number?",
         "What is your contact number?",
         "What is your mobile number?",
     ]),
-    ("30/01/2002", [
+    (USER_DOB, [
         "What is your date of birth?",
         "When were you born?",
     ]),
-    ("https://www.linkedin.com/in/shootingdragon/", [
+    (USER_LINKEDIN, [
         "What is your LinkedIn profile?",
         "Share your LinkedIn URL",
     ]),

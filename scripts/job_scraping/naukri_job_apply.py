@@ -49,7 +49,7 @@ class NaukriJobApply:
         'selected_jobs_count': '[data-qa="selectedCount"], [class*="selected"]',  # Counter for selected jobs
     }
     
-    def __init__(self, page: Page, vector_db_manager: VectorDBManager = None, enable_selector_validation: bool = True):
+    def __init__(self, page: Page, vector_db_manager: VectorDBManager = None, enable_selector_validation: bool = True, review_mode: bool = False):
         """
         Initialize Naukri job applicator.
         
@@ -57,9 +57,11 @@ class NaukriJobApply:
             page: Playwright page object (assumed to be logged into Naukri)
             vector_db_manager: VectorDBManager for form filling (will initialize if None)
             enable_selector_validation: Whether to validate selectors on startup
+            review_mode: Whether review mode is enabled (default: False for Naukri)
         """
         self.page = page
         self.vector_db = vector_db_manager or VectorDBManager()
+        self.review_mode = review_mode
         self.jobs_applied = 0
         self.jobs_failed = 0
         self.applied_job_ids = set()
@@ -137,7 +139,8 @@ class NaukriJobApply:
                     company_name = "Unknown Company"
                     company_elem = await job_card.query_selector('.companyName, [data-qa="companyName"], [data-qa="jobCardCompanyName"], [class*="company"]')
                     if company_elem:
-                        company_name = (await company_elem.inner_text()).strip()
+                        raw_company = (await company_elem.inner_text()).strip()
+                        company_name = raw_company.split('\n')[0].strip()
                     
                     # Extract job URL
                     job_url = ""
@@ -365,18 +368,20 @@ class NaukriJobApply:
             logger.error(f"Failed to update last working day: {e}")
             return False
 
-    async def apply_to_recommended_jobs(self, max_jobs: int = 5, use_bulk_select: bool = True) -> dict:
+    async def apply_to_recommended_jobs(self, max_jobs: int = 5, use_bulk_select: bool = True, review_mode: Optional[bool] = None) -> dict:
         """
         Apply to recommended Naukri jobs.
         
         Args:
             max_jobs: Maximum number of jobs to apply to (default: 5)
             use_bulk_select: Whether to use new bulk select mode (Phase 2) or legacy per-job mode (default: True)
+            review_mode: Optional override for review mode (default: self.review_mode)
         
         Returns:
             Dictionary with application statistics
         """
-        logger.info(f"Starting auto-apply process for up to {max_jobs} Naukri jobs...")
+        effective_review_mode = self.review_mode if review_mode is None else review_mode
+        logger.info(f"Starting auto-apply process for up to {max_jobs} Naukri jobs (review_mode={effective_review_mode})...")
         logger.info(f"Mode: {'Bulk Select (Phase 2)' if use_bulk_select else 'Per-Job Legacy'}")
         logger.info("="*70)
         
@@ -477,7 +482,8 @@ class NaukriJobApply:
                             self.vector_db,
                             confidence_threshold=0.60,
                             enable_logging=True,
-                            enable_selector_validation=False
+                            enable_selector_validation=False,
+                            review_mode=effective_review_mode
                         )
 
                         panel_appeared = await form_filler.wait_for_side_panel_chatbot(timeout_ms=25000)
@@ -507,6 +513,10 @@ class NaukriJobApply:
                             results['chatbot_stats'] = conv
                             results['total_attempted'] = jobs_selected
 
+                            if effective_review_mode:
+                                print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+                                input("Press Enter after submitting to continue...")
+
                             # Verify application success using new helper
                             verification = await form_filler.verify_chatbot_application_success()
                             
@@ -531,7 +541,8 @@ class NaukriJobApply:
                                     'job_url': job['job_url'],
                                     'timestamp': current_time,
                                     'status': status,
-                                    'message': message
+                                    'message': message,
+                                    'questions_answered': conv.get('answered', 0)
                                 })
                             logger.info(
                                 f"✅ Chatbot batch done: success={verification['success']}, "
@@ -578,7 +589,8 @@ class NaukriJobApply:
                         company_name = "Unknown Company"
                         company_elem = await job_card.query_selector('.companyName, [data-qa="companyName"], [data-qa="jobCardCompanyName"], [class*="company"]')
                         if company_elem:
-                            company_name = (await company_elem.inner_text()).strip()
+                            raw_company = (await company_elem.inner_text()).strip()
+                            company_name = raw_company.split('\n')[0].strip()
                             
                         # Extract job URL from card
                         job_url = ""
@@ -659,7 +671,7 @@ class NaukriJobApply:
                                 logger.debug("Scrolling apply button into view...")
                                 await apply_button.scroll_into_view_if_needed()
                                 await asyncio.sleep(1)
-                            
+                        
                             if is_enabled:
                                 try:
                                     logger.info("Clicking apply button...")
@@ -672,7 +684,8 @@ class NaukriJobApply:
                                         self.vector_db,
                                         confidence_threshold=0.70,
                                         enable_logging=False,
-                                        enable_selector_validation=False
+                                        enable_selector_validation=False,
+                                        review_mode=effective_review_mode
                                     )
                                     
                                     try:
@@ -683,8 +696,9 @@ class NaukriJobApply:
                                             max_questions=None,
                                             dry_run=False,
                                             allow_human_input=self.enable_human_fallback,  # Allow human intervention
-                                            submit_form=True,  # Auto-submit
-                                            navigate=False  # We are already on the page and have clicked apply
+                                            submit_form=not effective_review_mode,  # Auto-submit if not in review mode
+                                            navigate=False,  # We are already on the page and have clicked apply
+                                            review_mode=effective_review_mode
                                         )
                                         
                                         if session.status == "completed":
@@ -834,6 +848,22 @@ class NaukriJobApply:
             logger.info("✅ Dashboard report written successfully to JSON and CSV.")
         except Exception as e:
             logger.error(f"Failed to write dashboard report: {e}")
+
+        # Dispatch remote logging for applications
+        try:
+            from scripts.common_stuff.remote_logger import log_application_to_remote
+            for app_detail in results.get('details', []):
+                log_application_to_remote(
+                    job_title=app_detail.get('job_title', 'Unknown Job'),
+                    company=app_detail.get('company_name', 'Unknown Company'),
+                    portal='Naukri',
+                    status=app_detail.get('status', 'unknown'),
+                    timestamp=app_detail.get('timestamp', datetime.now().isoformat()),
+                    questions_answered=app_detail.get('questions_answered', 0)
+                )
+            logger.info("✅ Remote logging dispatched for Naukri applications.")
+        except Exception as e:
+            logger.error(f"Failed to dispatch remote logging: {e}")
 
         return results
     

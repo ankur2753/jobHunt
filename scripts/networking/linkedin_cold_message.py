@@ -2,6 +2,7 @@ import random
 from typing import List, Optional
 from playwright.async_api import Page
 from scripts.common_stuff.vector_db_manager import VectorDBManager
+from scripts.common_stuff.cold_outreach_generator import ColdOutreachGenerator
 from scripts.networking.linkedin_connect import LinkedInConnector
 
 
@@ -9,6 +10,7 @@ class LinkedInColdMessenger:
     def __init__(self, page: Page, db_manager: VectorDBManager = None):
         self.page = page
         self.db_manager = db_manager or VectorDBManager()
+        self.outreach_gen = ColdOutreachGenerator(self.db_manager)
         self.connector = LinkedInConnector(page, self.db_manager)
 
     async def _human_pause(self, min_ms: int = 700, max_ms: int = 1600):
@@ -21,28 +23,11 @@ class LinkedInColdMessenger:
         await self._human_pause(300, 800)
 
     def _build_cold_message(self, connection_reason: Optional[str] = None) -> str:
-        query = connection_reason or "summary"
-        results = self.db_manager.query_personal_profile(query, n_results=6)
-        snippets = []
-        for doc, meta in zip(results.get('documents', []), results.get('metadatas', [])):
-            if meta.get('normalized_key') in ('summary', 'skills', 'experience', 'education', 'salary', 'location'):
-                snippets.append(doc)
-        intro = ' '.join(snippets[:3]).strip()
-        if not intro:
-            intro = 'I build resilient automation tooling and workflows for modern SaaS teams.'
-
-        if connection_reason:
-            return (
-                f"Hi, I’m Ankur. I noticed we have shared interests in {connection_reason}. "
-                f"I work in QA automation and workflow orchestration. {intro} "
-                f"Would love to connect and explore how we can collaborate."
-            )
-
-        return (
-            f"Hi, I’m Ankur. I build resilient automation tooling for QA and software delivery teams. "
-            f"{intro} "
-            f"I’d love to connect and learn about your experience."
+        res = self.outreach_gen.generate_outreach(
+            channel="linkedin_connection_note" if connection_reason else "linkedin_dm",
+            custom_note=connection_reason,
         )
+        return res.get("message", "")
 
     async def _send_direct_message(self, message: str) -> str:
         message_button = self.page.locator('button:has-text("Message"), button[aria-label*="Message"]')

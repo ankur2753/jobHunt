@@ -1,9 +1,9 @@
-import asyncio
-from playwright.async_api import Page
+from typing import Optional
 
 class LinkedInJobApply:
-    def __init__(self, page: Page):
+    def __init__(self, page: Page, review_mode: bool = True):
         self.page = page
+        self.review_mode = review_mode
         self.selectors = {
             # Job search and listing
             "job_search_input": 'input[placeholder*="Title, skill or Company"]',
@@ -22,8 +22,9 @@ class LinkedInJobApply:
             "success_message": "text=Application submitted",
         }
 
-    async def apply_to_jobs(self, job_title: str, location: str):
-        print(f"Starting job search for '{job_title}' in '{location}'...")
+    async def apply_to_jobs(self, job_title: str, location: str, review_mode: Optional[bool] = None):
+        effective_review_mode = self.review_mode if review_mode is None else review_mode
+        print(f"Starting job search for '{job_title}' in '{location}' (review_mode={effective_review_mode})...")
         await self.page.goto("https://www.linkedin.com/jobs/")
 
         # Search for jobs
@@ -58,10 +59,14 @@ class LinkedInJobApply:
                 modal = self.page.locator(self.selectors["modal"])
                 if await modal.is_visible():
                     print("Applying to a job...")
-                    # This is where the logic to fill the form will go.
-                    # For now, we'll just close the modal.
-                    await self.page.click(self.selectors["close_modal"])
-                    print("Closed application modal (for now).")
+                    if effective_review_mode:
+                        print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+                        input("Press Enter after submitting to continue...")
+                    else:
+                        # This is where the logic to fill the form will go.
+                        # For now, we'll just close the modal.
+                        await self.page.click(self.selectors["close_modal"])
+                        print("Closed application modal (for now).")
 
             except Exception as e:
                 print(f"Could not apply to a job: {e}")

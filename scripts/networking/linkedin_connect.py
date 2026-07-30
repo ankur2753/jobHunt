@@ -50,9 +50,14 @@ class LinkedInConnector:
         if connection_reason:
             prefix = f'I came across your profile and would love to connect to discuss {connection_reason}.'
 
+        user_name = "Applicant"
+        results_name = self.db_manager.query_personal_profile("name", n_results=1)
+        if results_name.get("documents"):
+            user_name = results_name["documents"][0].split()[0]
+
         return (
-            f"Hi, I’m Ankur. {prefix} "
-            f"I work in QA automation, building resilient web workflows and automation tooling. "
+            f"Hi, I’m {user_name}. {prefix} "
+            f"I work in software and automation engineering, building resilient web workflows and automation tooling. "
             f"Here is a bit about my background: {details}"
         )
 

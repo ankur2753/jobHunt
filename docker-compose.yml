@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  job-hunt-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-hunt-agent
+    env_file:
+      - .env
+    volumes:
+      - ./personal_details:/app/personal_details
+      - ./vector_db:/app/vector_db
+      - ./logs:/app/logs
+    restart: unless-stopped

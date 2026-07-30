@@ -130,7 +130,7 @@ Question to answer:
                 "Content-Type": "application/json"
             }
             if provider == "openrouter":
-                headers["HTTP-Referer"] = "https://github.com/ankurkumar/job-hunt-agent"
+                headers["HTTP-Referer"] = os.getenv("GITHUB_REPO_URL", "https://github.com/job-hunt-agent")
                 headers["X-Title"] = "Job Hunt Agent"
                 
             payload = {

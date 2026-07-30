@@ -115,7 +115,8 @@ class NaukriFormFiller:
         vector_db_manager: VectorDBManager,
         confidence_threshold: float = 0.60,  # semantic-match threshold (>=0.6 auto-answer + log)
         enable_logging: bool = True,
-        enable_selector_validation: bool = False
+        enable_selector_validation: bool = False,
+        review_mode: bool = False
     ):
         """
         Initialize Naukri form filler.
@@ -126,6 +127,7 @@ class NaukriFormFiller:
             confidence_threshold: Min confidence for auto-fill (Naukri: 0.70)
             enable_logging: Whether to log all actions
             enable_selector_validation: Whether to validate selectors during execution
+            review_mode: Whether review mode is enabled (default: False for Naukri)
         """
         self.page = page
         self.vector_db = vector_db_manager
@@ -133,6 +135,7 @@ class NaukriFormFiller:
         self.enable_logging = enable_logging
         self.answer_normalizer = AnswerNormalizer()
         self.enable_selector_validation = enable_selector_validation
+        self.review_mode = review_mode
         
         # Initialize selector validator if enabled
         self.selector_validator = SelectorValidator(page, enable_logging=enable_logging) if enable_selector_validation else None
@@ -149,7 +152,8 @@ class NaukriFormFiller:
         dry_run: bool = False,
         allow_human_input: bool = True,
         submit_form: bool = False,
-        navigate: bool = True
+        navigate: bool = True,
+        review_mode: Optional[bool] = None
     ) -> NaukriFormFillingSession:
         """
         Main entry point: Fill Naukri job application form.
@@ -161,11 +165,13 @@ class NaukriFormFiller:
             allow_human_input: If True, ask user for answers on low confidence (fallback)
             submit_form: If True, submit form after filling (CAUTION: actual application!)
             navigate: If True, navigate to job_url first (set False if already there)
+            review_mode: Optional override for review mode
         
         Returns:
             NaukriFormFillingSession with results
         """
-        logger.info(f"Starting Naukri job application filling for: {job_url}")
+        effective_review_mode = self.review_mode if review_mode is None else review_mode
+        logger.info(f"Starting Naukri job application filling for: {job_url} (review_mode={effective_review_mode})")
         
         # Extract job ID from URL
         job_id = self._extract_job_id_from_url(job_url)
@@ -220,8 +226,12 @@ class NaukriFormFiller:
             # Step 7: Handle form validation
             await self._validate_form_fields()
             
-            # Step 8: Optional: Submit form
-            if submit_form and not dry_run:
+            # Step 8: Optional: Submit form or Review Mode Pause
+            if effective_review_mode:
+                print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+                input("Press Enter after submitting to continue...")
+                self.session.status = "partial" if not dry_run else "completed"
+            elif submit_form and not dry_run:
                 logger.warning("⚠️ SUBMITTING FORM - This will create an actual application!")
                 await self._submit_form()
                 self.session.status = "completed"

@@ -1,20 +1,41 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
 
 .vscode/
+.idea/
 .venv/
 venv/
 ENV/
+.pytest_cache/
 
-# Logs
+# Logs & Run reports
 logs/
 *.log
+naukri_selector_validation_*.json
 
-# Sensitive personal data and cookies
-personal_details/*.json
-scripts/linkedin_cookies.json
-resumes/
+# Sensitive personal data, cookies, resumes
+personal_details/*
+!personal_details/*.example.json
+resumes/*
+!resumes/*.example.md
+scripts/*_cookies.json
 
-# Environment files
+# Vector DB & Pattern DB
+vector_db/
+pattern_db/
+
+# Environment & local session files
 .env
+.env.*
+!.env.example
+port_info.json
+
+# Temporary files & screenshots
+*.png
+*.jpg
+*.jpeg
+db_dump.json
+.playwright-mcp/
+

@@ -1,0 +1,25 @@
+{
+    "personal_details_file": "personal_details.json",
+    "preferred_jobs": [
+        "Software Engineer",
+        "Full Stack Developer",
+        "Backend Developer",
+        "Frontend Developer",
+        "QA Automation Engineer",
+        "Python Developer"
+    ],
+    "excluded_companies": [],
+    "min_salary": 0,
+    "preferred_locations": [
+        "Bangalore, India",
+        "Remote",
+        "Hyderabad, India"
+    ],
+    "experience_level": [
+        "Entry-level",
+        "Junior",
+        "Associate",
+        "Mid-level",
+        "Senior"
+    ]
+}
