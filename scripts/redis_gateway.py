@@ -24,7 +24,7 @@ STREAM_REQUESTS = "agent.job-hunt.requests"
 STREAM_RESPONSES = "agent.job-hunt.responses"
 
 
-async def process_referral(url: str, jd_text: str, user_id: str):
+async def process_referral(url: str, jd_text: str, company: str, role: str, user_id: str):
     """Parses text to extract company/role and spawns cli_referral.py"""
     logger.info(f"Processing referral for user {user_id}")
     
@@ -53,8 +53,8 @@ async def process_referral(url: str, jd_text: str, user_id: str):
         else:
             target_details = await fetch_job_details(jd_text=jd_text)
             
-        company = target_details.get("company") or job_details.get("company")
-        role = target_details.get("title") or job_details.get("title")
+        company = company or target_details.get("company") or job_details.get("company")
+        role = role or target_details.get("title") or job_details.get("title")
         
         if not company or not role:
             return {"status": "error", "error": "Could not extract company and role"}
@@ -98,7 +98,7 @@ async def process_referral(url: str, jd_text: str, user_id: str):
         logger.error(f"process_referral failed: {e}")
         return {"status": "error", "error": str(e)}
 
-async def process_job(url: str, jd_text: str, user_id: str):
+async def process_job(url: str, jd_text: str, company: str, role: str, user_id: str):
     """Spawns the heavy cli_tailor.py script as an ephemeral process."""
     logger.info(f"Spawning worker for URL: {url} | User ID: {user_id}")
     
@@ -107,6 +107,10 @@ async def process_job(url: str, jd_text: str, user_id: str):
         cmd.extend(["--url", url])
     if jd_text:
         cmd.extend(["--jd-text", jd_text])
+    if company:
+        cmd.extend(["--company", company])
+    if role:
+        cmd.extend(["--role", role])
 
     try:
         # Run process, capturing stdout for the JSON result
@@ -167,6 +171,8 @@ async def main():
                     payload = envelope_json.get("payload", {})
                     url = payload.get("job_url", "")
                     jd_text = payload.get("custom_notes", "")
+                    company = payload.get("company", "")
+                    role = payload.get("role", "")
                     user_id = envelope_json.get("user_id", "unknown")
                     
                     if not url and not jd_text:
@@ -198,10 +204,10 @@ async def main():
                         # Let's run a simple python snippet to parse via LLM or just run cli_tailor?
                         # Wait, `cli_referral.py` requires `--company` and `--role`.
                         # Let's write a small inline wrapper or just use `process_referral` function.
-                        result = await process_referral(url, jd_text, user_id)
+                        result = await process_referral(url, jd_text, company, role, user_id)
                     else:
                         # Spawn the heavy worker
-                        result = await process_job(url, jd_text, user_id)
+                        result = await process_job(url, jd_text, company, role, user_id)
                         
                     # Transform worker result to match tg-bot expected JobHuntResponsePayload
                     mapped_payload = {

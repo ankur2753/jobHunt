@@ -4,26 +4,37 @@ import argparse
 import asyncio
 import json
 import logging
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
-# 1. Ensure project root is in sys.path
+# Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.common_stuff.llm_fallback import query_llm_fallback
+from scripts.common_stuff.generate_pretty_resume import build_resume_html
 
 logger = logging.getLogger("cli_tailor")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-DEFAULT_MASTER_RESUME_PATH = PROJECT_ROOT / "resumes" / "resume_master.md"
 OUTPUT_DIR = PROJECT_ROOT / "resumes" / "tailored"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+def load_master_profile() -> dict:
+    """Loads master user details from personal_details.json."""
+    pd_path = PROJECT_ROOT / "personal_details" / "personal_details.json"
+    if pd_path.exists():
+        try:
+            return json.loads(pd_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"Error loading personal_details.json: {e}")
+
+    raise ValueError("personal_details.json not found or invalid.")
+
 
 async def fetch_job_details(url: str = None, jd_text: str = None) -> dict:
-    """Extracts job title, company name, location, and requirements from URL or raw text using LLM."""
+    """Extracts raw text from URL."""
     raw_text = ""
     if url:
         logger.info(f"Fetching URL content from {url}...")
@@ -49,238 +60,28 @@ async def fetch_job_details(url: str = None, jd_text: str = None) -> dict:
     if not raw_text:
         raise ValueError("No job description text or reachable URL provided.")
 
-    prompt = (
-        "Extract the key job details from the following job posting text in JSON format.\n"
-        "JSON keys required: 'title', 'company', 'location', 'must_have_skills', 'description_summary'\n\n"
-        f"JOB POSTING TEXT:\n{raw_text[:4000]}"
-    )
-    
-    response = await query_llm_fallback(question=prompt)
-    
     job_info = {
-        "title": "Software Technologist / Automation Engineer",
+        "title": "Target Role",
         "company": "Target Company",
-        "location": "Bengaluru, Karnataka / Remote",
-        "must_have_skills": [],
-        "description_summary": raw_text[:500]
+        "raw_text": raw_text
     }
     
+    # Extract Title and Company from raw text
+    prompt = f"Extract 'title' and 'company' from this text and return ONLY JSON like {{\"title\": \"...\", \"company\": \"...\"}}.\n\n{raw_text[:2000]}"
     try:
-        clean_resp = response.strip() if response else ""
-        if "```json" in clean_resp:
-            clean_resp = clean_resp.split("```json")[1].split("```")[0].strip()
-        elif "```" in clean_resp:
-            clean_resp = clean_resp.split("```")[1].split("```")[0].strip()
-        parsed = json.loads(clean_resp)
-        job_info.update(parsed)
+        res = subprocess.run(["agy", "--dangerously-skip-permissions", "--print", prompt], capture_output=True, text=True)
+        if res.returncode == 0:
+            out = res.stdout.strip()
+            if "```json" in out:
+                out = out.split("```json")[1].split("```")[0].strip()
+            elif "```" in out:
+                out = out.split("```")[1].split("```")[0].strip()
+            parsed = json.loads(out)
+            job_info.update(parsed)
     except Exception:
-        logger.warning("Could not parse LLM job JSON, using smart regex extraction fallback.")
+        pass
         
-    # Heuristic/Regex fallback for Company and Title if LLM did not populate them
-    if job_info.get("company") == "Target Company" and raw_text:
-        if "Cohesity" in raw_text:
-            job_info["company"] = "Cohesity"
-        elif "Philips" in raw_text:
-            job_info["company"] = "Philips"
-        elif "Apple" in raw_text:
-            job_info["company"] = "Apple"
-        elif "SafeSend" in raw_text:
-            job_info["company"] = "SafeSend"
-
-    if (job_info.get("title") in ("Target Role", "Software Technologist / Automation Engineer")) and raw_text:
-        # Look for explicit job title lines in common job board formats
-        lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
-        for line in lines[:50]:
-            if any(kw in line for kw in ["Engineer", "Developer", "Technologist", "Architect", "SDET", "QA", "Specialist", "Manager"]):
-                if len(line) < 100 and not line.startswith("http") and "VIEW" not in line and "APPLY" not in line:
-                    job_info["title"] = line
-                    break
-
-    job_info["raw_text"] = raw_text
     return job_info
-
-
-def generate_resume_html(data: dict) -> str:
-    name = data.get("name", "Ankur Kumar")
-    location = data.get("location", "Bengaluru, Karnataka")
-    email = data.get("email", "ankur2753.ak@gmail.com")
-    linkedin = data.get("linkedin", "https://www.linkedin.com/in/shootingdragon/")
-    github = data.get("github", "https://github.com/ankur2753")
-    summary = data.get("summary", "")
-    skills = data.get("skills", {})
-    experience = data.get("experience", [])
-    projects = data.get("projects", [])
-    education = data.get("education", [])
-
-    skills_html = ""
-    for category, skill_list in skills.items():
-        skills_html += f"""
-        <div class="skill-group">
-            <span class="skill-category">{category}:</span>
-            <span class="skill-items">{", ".join(skill_list)}</span>
-        </div>
-        """
-
-    exp_html = ""
-    for job in experience:
-        bullets_list = "".join([f"<li>{b}</li>" for b in job.get("bullets", [])])
-        exp_html += f"""
-        <div class="job-block">
-            <div class="job-header">
-                <div>
-                    <span class="job-title">{job.get('title')}</span>
-                    <span class="job-company"> | {job.get('company')}</span>
-                </div>
-                <div class="job-date">{job.get('duration')}</div>
-            </div>
-            <ul class="job-bullets">
-                {bullets_list}
-            </ul>
-        </div>
-        """
-
-    proj_html = ""
-    if projects:
-        proj_blocks = ""
-        for proj in projects:
-            bullets_list = "".join([f"<li>{b}</li>" for b in proj.get("bullets", [])])
-            proj_blocks += f"""
-            <div class="job-block">
-                <div class="job-header">
-                    <div><span class="job-title">{proj.get('title')}</span></div>
-                    <div class="job-date">{proj.get('date', '')}</div>
-                </div>
-                <ul class="job-bullets">
-                    {bullets_list}
-                </ul>
-            </div>
-            """
-        proj_html = f"""
-        <div class="section">
-            <div class="section-title">Selected Engineering Projects</div>
-            {proj_blocks}
-        </div>
-        """
-
-    edu_html = ""
-    for edu in education:
-        edu_html += f"""
-        <div class="edu-block">
-            <div class="edu-header">
-                <div>
-                    <span class="edu-degree">{edu.get('degree')}</span>
-                    <span class="edu-school"> — {edu.get('school')}</span>
-                </div>
-                <div class="edu-year">{edu.get('year')}</div>
-            </div>
-        </div>
-        """
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>{name} - Resume</title>
-<style>
-    @page {{
-        size: A4;
-        margin: 0.4in 0.45in;
-    }}
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        color: #1e293b;
-        background-color: #ffffff;
-        line-height: 1.42;
-        font-size: 9.5pt;
-    }}
-    .header {{
-        text-align: center;
-        border-bottom: 2px solid #0f172a;
-        padding-bottom: 8px;
-        margin-bottom: 14px;
-    }}
-    .header h1 {{
-        font-size: 22pt;
-        font-weight: 800;
-        letter-spacing: 1px;
-        color: #0f172a;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-    }}
-    .contact-info {{
-        font-size: 9pt;
-        color: #475569;
-        font-weight: 500;
-    }}
-    .contact-info a {{ color: #0284c7; text-decoration: none; }}
-    .contact-info span {{ margin: 0 6px; color: #94a3b8; }}
-
-    .section {{ margin-bottom: 14px; }}
-    .section-title {{
-        font-size: 10.5pt;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-        color: #0f172a;
-        border-bottom: 1.5px solid #cbd5e1;
-        padding-bottom: 3px;
-        margin-bottom: 8px;
-    }}
-    .summary-text {{ font-size: 9.5pt; color: #334155; text-align: justify; line-height: 1.45; }}
-    .skill-group {{ margin-bottom: 5px; font-size: 9.3pt; line-height: 1.4; }}
-    .skill-category {{ font-weight: 700; color: #0f172a; }}
-    .skill-items {{ color: #334155; }}
-    .job-block {{ margin-bottom: 11px; }}
-    .job-header {{ display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }}
-    .job-title {{ font-size: 10pt; font-weight: 700; color: #0f172a; }}
-    .job-company {{ font-size: 9.5pt; font-weight: 600; color: #0369a1; }}
-    .job-date {{ font-size: 8.8pt; font-weight: 600; color: #64748b; text-align: right; }}
-    .job-bullets {{ padding-left: 18px; color: #334155; }}
-    .job-bullets li {{ margin-bottom: 3.5px; font-size: 9.3pt; line-height: 1.4; }}
-    .job-bullets strong {{ color: #0f172a; font-weight: 600; }}
-    .edu-block {{ margin-bottom: 4px; }}
-    .edu-header {{ display: flex; justify-content: space-between; align-items: baseline; }}
-    .edu-degree {{ font-weight: 700; font-size: 9.5pt; color: #0f172a; }}
-    .edu-school {{ font-weight: 500; font-size: 9.5pt; color: #475569; }}
-    .edu-year {{ font-size: 8.8pt; font-weight: 600; color: #64748b; }}
-</style>
-</head>
-<body>
-
-<div class="header">
-    <h1>{name}</h1>
-    <div class="contact-info">
-        {location} <span>|</span> <a href="mailto:{email}">{email}</a> <span>|</span> <a href="{linkedin}" target="_blank">LinkedIn</a> <span>|</span> <a href="{github}" target="_blank">GitHub</a>
-    </div>
-</div>
-
-<div class="section">
-    <div class="section-title">Professional Summary</div>
-    <div class="summary-text">{summary}</div>
-</div>
-
-<div class="section">
-    <div class="section-title">Technical Skills</div>
-    {skills_html}
-</div>
-
-<div class="section">
-    <div class="section-title">Professional Experience</div>
-    {exp_html}
-</div>
-
-{proj_html}
-
-<div class="section">
-    <div class="section-title">Education</div>
-    {edu_html}
-</div>
-
-</body>
-</html>
-"""
-    return html
 
 
 def generate_cover_letter_html(name: str, company: str, title: str, letter_paragraphs: list) -> str:
@@ -358,115 +159,106 @@ async def run_automation(url: str = None, jd_text: str = None, company_override:
     company = company_override or job_info.get("company", "Target Company")
     role = role_override or job_info.get("title", "Target Role")
     
-    master_md = DEFAULT_MASTER_RESUME_PATH.read_text(encoding="utf-8") if DEFAULT_MASTER_RESUME_PATH.exists() else ""
+    master_bank = load_master_profile()
     
-    prompt = (
-        f"You are an expert technical recruiter and resume writer.\n"
-        f"Target Job: {role} at {company}\n"
-        f"Job Description: {job_info.get('raw_text', '')[:3000]}\n\n"
-        f"Master Resume:\n{master_md}\n\n"
-        "Generate a tailored JSON structure with keys:\n"
-        "1. 'summary': 2-3 line executive summary targeted at role\n"
-        "2. 'skills': dictionary of categories -> array of skill strings\n"
-        "3. 'experience': array of jobs with 'title' (use 'Senior QA Engineer' for SafeSend), 'company', 'duration', 'bullets' (3-5 strong bullet strings with bold html <strong> tags for key tools/metrics)\n"
-        "4. 'projects': array of 2 projects with 'title', 'date', 'bullets'\n"
-        "5. 'education': array of education entries\n"
-        "6. 'cover_letter_paragraphs': array of 4 paragraph strings for cover letter\n"
-        "7. 'linkedin_dm': a short 3-sentence outreach message for recruiters\n\n"
-        "Ensure exact JSON output only."
-    )
+    prompt = f"""You are an expert technical recruiter and resume writer.
+Given the following Job Description and the candidate's Master Bank of resume details, return ONLY a lightweight JSON mapping of the best items to select for this specific job, along with a cover letter and a LinkedIn DM.
+Ensure the total content fits on a single A4 page.
+Do NOT include any extra text, only the JSON.
+
+Job Company: {company}
+Job Title: {role}
+Job Description:
+{job_info.get('raw_text', '')[:3000]}
+
+Master Bank:
+{json.dumps(master_bank, indent=2)}
+
+Return a JSON with this exact schema:
+{{
+  "summary_type": "string", // select the best key from Master Bank's 'summaries'
+  "selected_skill_categories": ["string"], // Select 3-4 most relevant keys from 'skills'
+  "experience": [
+    {{
+      "title": "string", // exact title from master bank experience
+      "company": "string", // exact company from master bank experience
+      "selected_bullet_indices": [0, 1, ...] // 3-4 indices of bullets in the Master Bank that best match the JD
+    }}
+  ],
+  "selected_project_indices": [0, ...], // 1-2 indices of projects in Master Bank
+  "cover_letter_paragraphs": ["string", "string", "string", "string"], // 4 paragraphs
+  "linkedin_dm": "string" // short 3-sentence outreach message
+}}"""
     
-    response = await query_llm_fallback(question=prompt)
-    
-    parsed_data = {}
+    logger.info("Calling agy CLI to generate tailored data...")
+    result = subprocess.run(["agy", "--dangerously-skip-permissions", "--print", prompt], capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(f"agy CLI failed: {result.stderr}")
+        raise RuntimeError("LLM tailoring failed.")
+        
+    output = result.stdout.strip()
+    if "```json" in output:
+        output = output.split("```json")[1].split("```")[0].strip()
+    elif "```" in output:
+        output = output.split("```")[1].split("```")[0].strip()
+        
     try:
-        clean_resp = response.strip()
-        if "```json" in clean_resp:
-            clean_resp = clean_resp.split("```json")[1].split("```")[0].strip()
-        elif "```" in clean_resp:
-            clean_resp = clean_resp.split("```")[1].split("```")[0].strip()
-        parsed_data = json.loads(clean_resp)
+        selection = json.loads(output)
     except Exception as e:
         logger.error(f"Failed to parse LLM structured JSON: {e}")
-        parsed_data = {
-            "summary": f"Senior QA & Software Automation Engineer with 3+ years of experience designing scalable test framework architectures, REST & SOAP API test suites, and high-performance microservices targeted at {role} at {company}. Specialized in Java (Selenium), Python (Playwright), BDD frameworks, and Azure cloud infrastructure. Proven track record in parallelizing test pipelines to reduce execution runtime by 25% and conducting deep-dive log root-cause analysis in JIRA.",
-            "skills": {
-                "Test Automation & BDD": ["Java", "Selenium WebDriver", "Playwright", "Pytest", "BDD (Cucumber / Behave)", "E2E Framework Design", "Cross-Browser Testing"],
-                "API & Web Services Testing": ["REST API Automation", "SOAP Web Services", "Postman", "Contract Validation", "JSON/XML Payload Verification"],
-                "Languages & Databases": ["Java", "Python", "C#", "JavaScript", "React.js", "ASP.NET Core", "SQL", "MSSQL", "MongoDB"],
-                "Cloud, DevOps & Infrastructure": ["Azure (VMs, Pipelines)", "AWS", "Docker", "Kubernetes", "Git", "CI/CD Test Pipelines", "Virtualization Concepts"],
-                "Quality Engineering & Tools": ["Test Strategy & Design", "Requirement Traceability (RTM)", "Root Cause Log Analysis", "JIRA", "Defect Lifecycle", "Agile/Scrum"]
-            },
-            "experience": [
-                {
-                    "title": "Senior QA Engineer",
-                    "company": "SafeSend Technologies",
-                    "duration": "Feb 2023 – Present",
-                    "bullets": [
-                        f"Architected and automated robust test suites using <strong>Java (Selenium)</strong> and <strong>Python (Playwright)</strong> to validate critical application workflows aligned with {role} requirements.",
-                        "Implemented parallel test execution workloads across <strong>Azure VMs</strong>, achieving a <strong>25% reduction in total execution runtime</strong>.",
-                        "Designed automated validation for <strong>REST and SOAP web services</strong>, executing payload structure, HTTP status, and API contract verification.",
-                        "Engineered full-stack web applications from scratch featuring decoupled microservice backends, <strong>React.js</strong> single-page UI, and <strong>MSSQL</strong> databases.",
-                        "Performed structured <strong>log analysis and root-cause defect investigation</strong> using <strong>JIRA</strong>, partnering with core developers to ensure rapid resolution of software defects."
-                    ]
-                },
-                {
-                    "title": "Graduate Engineering Trainee",
-                    "company": "SafeSend Technologies",
-                    "duration": "Jul 2022 – Feb 2023",
-                    "bullets": [
-                        "Engineered high-throughput <strong>ASP.NET REST APIs</strong> implementing <strong>CQRS and SAGA</strong> architectural patterns for modular backend processing.",
-                        "Integrated <strong>BDD specifications (Cucumber/Behave)</strong> to align business logic requirements directly with automated regression suites.",
-                        "Optimized MSSQL database performance via indexing strategies and query tuning, improving backend data retrieval speeds under heavy test loads.",
-                        "Migrated legacy monolithic MVC Razor pages to component-based <strong>React.js</strong> single-page interfaces, enhancing maintainability."
-                    ]
-                },
-                {
-                    "title": "Front End Intern",
-                    "company": "Deloitte",
-                    "duration": "May 2022 – Jul 2022",
-                    "bullets": [
-                        "Developed responsive front-end interfaces with <strong>React.js</strong> and reusable UI component libraries to standardize cross-team development.",
-                        "Executed cross-browser compatibility and UI validation checks to guarantee rendering consistency across browser engines."
-                    ]
-                }
-            ],
-            "projects": [
-                {
-                    "title": "Enterprise API & Web Services Automated Test Suite",
-                    "date": "2024",
-                    "bullets": ["Designed a Java-based API testing harness supporting REST and SOAP request serialization, dynamic assertion checks, and automated HTML execution reporting."]
-                },
-                {
-                    "title": "Cloud VM Parallel Test Infrastructure",
-                    "date": "2023",
-                    "bullets": ["Built Dockerized test execution containers deployed to Azure Virtual Machines with integrated CI/CD trigger scripts for automated nightly regression runs."]
-                }
-            ],
-            "education": [
-                {
-                    "degree": "B.E., Computer Science Engineering",
-                    "school": "Sapthagiri College Of Engineering",
-                    "year": "2023"
-                }
-            ],
-            "cover_letter_paragraphs": [
-                "Dear Hiring Manager,",
-                f"I am writing to express my strong interest in the <strong>{role}</strong> position at {company}. With over 3 years of hands-on experience designing automated test suites, validating web services, and optimizing cloud-based test infrastructure, I am confident in my ability to deliver immediate value.",
-                f"In my current role as Senior QA Engineer at SafeSend Technologies, I have built end-to-end test automation solutions using Java/Selenium and Python/Playwright to validate complex software workflows. A key highlight was implementing parallel execution workloads across Azure VMs, which reduced total suite runtime by 25%.",
-                "I would welcome the opportunity to discuss how my automation experience and technical problem-solving skills can support your team. Thank you for your time and consideration."
-            ],
-            "linkedin_dm": f"Hi! I noticed the open {role} position at {company} and wanted to reach out. As a Senior QA Engineer specializing in Java/Selenium and Playwright test automation, I'd love to connect and share how my background fits your team's goals!"
-        }
+        raise e
+        
+    # Assemble the final resume data
+    summary_type = selection.get("summary_type")
+    summary = master_bank.get("summaries", {}).get(summary_type, list(master_bank.get("summaries", {}).values())[0])
+    
+    skills = {}
+    for cat in selection.get("selected_skill_categories", []):
+        if cat in master_bank.get("skills", {}):
+            skills[cat] = master_bank["skills"][cat]
+            
+    experience = []
+    for sel_exp in selection.get("experience", []):
+        for master_exp in master_bank.get("experience", []):
+            if master_exp["title"] == sel_exp["title"] and master_exp["company"] == sel_exp["company"]:
+                bullets = [master_exp["bullets"][i] for i in sel_exp.get("selected_bullet_indices", []) if i < len(master_exp["bullets"])]
+                experience.append({
+                    "title": master_exp["title"],
+                    "company": master_exp["company"],
+                    "duration": master_exp["duration"],
+                    "bullets": bullets
+                })
+                break
+                
+    projects = []
+    for idx in selection.get("selected_project_indices", []):
+        if idx < len(master_bank.get("projects", [])):
+            projects.append(master_bank["projects"][idx])
+            
+    parsed_data = {
+        "name": master_bank.get("name", "Ankur Kumar"),
+        "location": master_bank.get("location", "Bengaluru, Karnataka"),
+        "email": master_bank.get("email", "ankur2753.ak@gmail.com"),
+        "linkedin": master_bank.get("linkedin", "https://www.linkedin.com/in/shootingdragon/"),
+        "github": master_bank.get("github", "https://github.com/ankur2753"),
+        "summary": summary,
+        "skills": skills,
+        "experience": experience,
+        "projects": projects,
+        "education": master_bank.get("education", [])
+    }
 
-    parsed_data["name"] = "Ankur Kumar"
-    parsed_data["location"] = "Bengaluru, Karnataka"
-    parsed_data["email"] = "ankur2753.ak@gmail.com"
-    parsed_data["linkedin"] = "https://www.linkedin.com/in/shootingdragon/"
-    parsed_data["github"] = "https://github.com/ankur2753"
-
-    resume_html = generate_resume_html(parsed_data)
-    cover_html = generate_cover_letter_html("Ankur Kumar", company, role, parsed_data.get("cover_letter_paragraphs", []))
+    resume_html = build_resume_html(parsed_data)
+    cover_html = generate_cover_letter_html(
+        parsed_data["name"], 
+        company, 
+        role, 
+        selection.get("cover_letter_paragraphs", [
+            "Dear Hiring Manager,",
+            f"I am writing to express my strong interest in the <strong>{role}</strong> position at {company}.",
+            "I would welcome the opportunity to discuss how my automation experience and technical problem-solving skills can support your team. Thank you for your time and consideration."
+        ])
+    )
 
     safe_comp = "".join(c for c in company if c.isalnum() or c in ("_", "-")).strip() or "Company"
     safe_role = "".join(c for c in role if c.isalnum() or c in ("_", "-")).strip() or "Role"
@@ -503,7 +295,7 @@ async def run_automation(url: str = None, jd_text: str = None, company_override:
         "role": role,
         "resume_pdf": str(resume_pdf_path.resolve()),
         "cover_letter_pdf": str(cover_pdf_path.resolve()),
-        "linkedin_dm": parsed_data.get("linkedin_dm", "")
+        "linkedin_dm": selection.get("linkedin_dm", "")
     }
     return result
 

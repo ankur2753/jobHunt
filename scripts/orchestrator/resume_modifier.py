@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Resume Modifier Module for Automated Job Search Agent.
-Dynamically scrapes job posting JDs, tailors master resume, and renders
+Dynamically tailors master resume using LLM selection, and renders
 executive ATS-compliant PDFs and PNG preview screenshots.
 """
 
@@ -11,9 +11,9 @@ import argparse
 import asyncio
 import json
 import logging
+import subprocess
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -49,125 +49,107 @@ def load_master_profile() -> dict:
         except Exception as e:
             logger.warning(f"Error loading personal_details.json: {e}")
 
-    # Fallback to standard profile
-    return {
-        "name": "Ankur Kumar",
-        "email": "ankur2753.ak@gmail.com",
-        "location": "Bengaluru, Karnataka",
-        "linkedin": "https://www.linkedin.com/in/shootingdragon/"
-    }
+    raise ValueError("personal_details.json not found or invalid.")
 
 
 def tailor_resume_data_for_job(company: str, job_title: str, jd_text: str) -> dict:
     """
-    Tailors resume skills and bullets to match company and target job title.
-    Enforces strict truthfulness based on Ankur's actual background.
+    Uses the LLM via agy CLI to select the best resume items from the master bank.
     """
-    is_apple = "apple" in company.lower()
-    is_browserstack = "browserstack" in company.lower()
+    master_bank = load_master_profile()
+    
+    prompt = f"""You are an expert technical recruiter and resume writer.
+Given the following Job Description and the candidate's Master Bank of resume details, return ONLY a lightweight JSON mapping of the best items to select for this specific job. 
+Ensure the total content fits on a single A4 page.
+Do NOT include any extra text, only the JSON.
 
-    if is_apple:
-        summary = (
-            "Software Development & Automation Engineer with 3+ years of experience architecting production "
-            "Python microservices, intelligent AI-driven automation workflows, and responsive React.js web interfaces. "
-            "Specialized in designing scalable Playwright automation frameworks, RAG/LLM-powered agentic tools, REST APIs, "
-            "and CI/CD pipelines. Proven track record in parallelizing execution workloads to reduce runtime by 25% "
-            "and building modular, high-impact engineering tools."
-        )
-        skills = {
-            "Languages & Frameworks": ["Python", "JavaScript", "React.js", "Node.js", "C#", "ASP.NET Core", "HTML5", "CSS3", "SQL"],
-            "Automation & Tools": ["Playwright", "Automation Framework Architecture", "Pytest", "API Testing", "Agentic & LLM Tooling", "RAG"],
-            "AI & Data Systems": ["Vector Databases (ChromaDB)", "Semantic Embeddings", "REST APIs", "Microservices", "MSSQL", "MongoDB"],
-            "Cloud & DevOps": ["Azure (VMs, DevOps)", "AWS", "Docker", "Kubernetes", "Git", "CI/CD Test Pipelines"]
-        }
-        exp1_bullets = [
-            "Architected and deployed end-to-end <strong>Python</strong> & <strong>Playwright</strong> automation systems to streamline complex engineering workflows and validate enterprise applications.",
-            "Engineered intelligent agentic workflow automation tools utilizing <strong>Python</strong>, <strong>ChromaDB</strong>, and <strong>LLM fallbacks</strong> for autonomous task execution.",
-            "Implemented parallel execution pipelines for automated workloads on Azure VMs, achieving a <strong>25% reduction in total execution runtime</strong>.",
-            "Developed full-stack web applications featuring modular microservices backends, <strong>React.js</strong> single-page UI, and <strong>MSSQL</strong> databases.",
-            "Collaborated with cross-functional product and engineering teams to translate requirements into resilient, self-healing automation tools."
-        ]
-    else:
-        summary = (
-            "Experienced QA & Automation Engineer with 3+ years of expertise in architecting end-to-end automated "
-            "test suites, scalable web applications, and high-performance microservices. Specialized in Python, Playwright, "
-            "React.js, C#, and Azure cloud environments. Proven track record in scaling cross-browser automation, "
-            "parallelizing execution pipelines to reduce runtime by 25%, and optimizing enterprise MSSQL databases."
-        )
-        skills = {
-            "Automation & Testing": ["Playwright", "Pytest", "QA Automation Framework Design", "API Testing", "Integration Testing", "UI & Cross-Browser Testing"],
-            "Languages & Frameworks": ["Python", "JavaScript", "React.js", "C#", "ASP.NET Core", "Node.js", "HTML5", "CSS3", "SQL"],
-            "Cloud & DevOps": ["Azure (VMs, DevOps)", "AWS", "Docker", "Kubernetes", "Git", "CI/CD Test Pipelines"],
-            "Architecture & Databases": ["Microservices Architecture", "REST APIs", "CQRS", "SAGA Pattern", "MSSQL", "MongoDB"]
-        }
-        exp1_bullets = [
-            "Designed and built end-to-end QA automation test suites using <strong>Python</strong> and <strong>Playwright</strong> to validate complex enterprise web workflows.",
-            "Implemented parallel test processing workloads on Azure VMs, achieving a <strong>25% reduction in total execution runtime</strong>.",
-            "Engineered full-stack web applications from scratch featuring decoupled microservice backends, <strong>React.js</strong> single-page UI, and <strong>MSSQL</strong> databases.",
-            "Architected modular microservices to eliminate monolithic test & deployment bottlenecks and improve system maintainability.",
-            "Collaborated closely with product managers and stakeholders to analyze requirements, define edge cases, and deliver resilient quality solutions."
-        ]
+Job Company: {company}
+Job Title: {job_title}
+Job Description:
+{jd_text[:4000]}
 
-    profile = load_master_profile()
+Master Bank:
+{json.dumps(master_bank, indent=2)}
 
+Return a JSON with this exact schema:
+{{
+  "summary_type": "string", // select the best key from Master Bank's 'summaries'
+  "selected_skill_categories": ["string"], // Select 3-4 most relevant keys from 'skills'
+  "experience": [
+    {{
+      "title": "string", // exact title from master bank experience
+      "company": "string", // exact company from master bank experience
+      "selected_bullet_indices": [0, 1, ...] // 3-4 indices of bullets in the Master Bank that best match the JD
+    }}
+  ],
+  "selected_project_indices": [0, ...] // 1-2 indices of projects in Master Bank
+}}"""
+
+    logger.info("Calling LLM to select resume items...")
+    result = subprocess.run(["agy", "--dangerously-skip-permissions", "--print", prompt], capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        logger.error(f"agy CLI failed: {result.stderr}")
+        raise RuntimeError("LLM selection failed.")
+        
+    output = result.stdout.strip()
+    
+    # Extract JSON if markdown formatting is present
+    if "```json" in output:
+        output = output.split("```json")[1].split("```")[0].strip()
+    elif "```" in output:
+        output = output.split("```")[1].split("```")[0].strip()
+        
+    try:
+        selection = json.loads(output)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM output as JSON: {output}")
+        raise e
+        
+    # Assemble the final resume data
+    summary_type = selection.get("summary_type")
+    summary = master_bank.get("summaries", {}).get(summary_type, list(master_bank.get("summaries", {}).values())[0])
+    
+    skills = {}
+    for cat in selection.get("selected_skill_categories", []):
+        if cat in master_bank.get("skills", {}):
+            skills[cat] = master_bank["skills"][cat]
+            
+    experience = []
+    for sel_exp in selection.get("experience", []):
+        for master_exp in master_bank.get("experience", []):
+            if master_exp["title"] == sel_exp["title"] and master_exp["company"] == sel_exp["company"]:
+                bullets = [master_exp["bullets"][i] for i in sel_exp.get("selected_bullet_indices", []) if i < len(master_exp["bullets"])]
+                experience.append({
+                    "title": master_exp["title"],
+                    "company": master_exp["company"],
+                    "duration": master_exp["duration"],
+                    "bullets": bullets
+                })
+                break
+                
+    projects = []
+    for idx in selection.get("selected_project_indices", []):
+        if idx < len(master_bank.get("projects", [])):
+            projects.append(master_bank["projects"][idx])
+            
     return {
-        "name": profile.get("name", "ANKUR KUMAR").upper(),
-        "location": profile.get("location", "Bengaluru, Karnataka"),
-        "email": profile.get("email", "ankur2753.ak@gmail.com"),
-        "linkedin": profile.get("linkedin", "https://www.linkedin.com/in/shootingdragon/"),
+        "name": master_bank.get("name", "ANKUR KUMAR").upper(),
+        "location": master_bank.get("location", "Bengaluru, Karnataka"),
+        "email": master_bank.get("email", "ankur2753.ak@gmail.com"),
+        "linkedin": master_bank.get("linkedin", "https://www.linkedin.com/in/shootingdragon/"),
+        "github": master_bank.get("github", "https://github.com/ankur2753"),
         "summary": summary,
         "skills": skills,
-        "experience": [
-            {
-                "title": "Associate Engineer",
-                "company": "SafeSend Technologies",
-                "duration": "Feb 2023 – Present",
-                "bullets": exp1_bullets
-            },
-            {
-                "title": "Graduate Engineering Trainee",
-                "company": "SafeSend Technologies",
-                "duration": "Jul 2022 – Feb 2023",
-                "bullets": [
-                    "Developed high-throughput ASP.NET REST APIs incorporating enterprise design patterns (<strong>SAGA</strong>, <strong>CQRS</strong>).",
-                    "Optimized MSSQL database performance via query tuning, index optimization, and schema refactoring.",
-                    "Enforced <strong>SOLID</strong> design principles across codebase modules to maximize testability, modularity, and code quality.",
-                    "Successfully migrated legacy ASP.NET MVC Razor pages into modern, component-driven <strong>React.js</strong> web applications."
-                ]
-            },
-            {
-                "title": "Front End Intern",
-                "company": "Deloitte",
-                "duration": "May 2022 – Jul 2022",
-                "bullets": [
-                    "Developed responsive, accessible web applications utilizing <strong>React.js</strong> and modern CSS standards.",
-                    "Designed reusable UI component libraries to establish visual consistency and improve team development velocity."
-                ]
-            }
-        ],
-        "education": [
-            {
-                "degree": "B.E., Computer Science Engineering",
-                "school": "Sapthagiri College Of Engineering",
-                "year": "2023"
-            },
-            {
-                "degree": "12th, Senior Secondary (CBSE)",
-                "school": "D.A.V Public School",
-                "year": "2019"
-            },
-            {
-                "degree": "10th, Secondary (CBSE)",
-                "school": "D.A.V Public School",
-                "year": "2017"
-            }
-        ]
+        "experience": experience,
+        "projects": projects,
+        "education": master_bank.get("education", [])
     }
 
 
 async def generate_tailored_resume(company: str, job_title: str, jd_text: str = "", jd_url: str = "") -> dict:
     """
-    Main entrypoint function to generate tailored Markdown, HTML, executive PDF, and preview PNG.
+    Main entrypoint function to generate tailored HTML, executive PDF, and preview PNG.
     """
     if jd_url and not jd_text:
         try:
@@ -187,7 +169,6 @@ async def generate_tailored_resume(company: str, job_title: str, jd_text: str = 
     base_name = f"Resume_{safe_company}_{safe_title}_Ankur_Kumar"
     pdf_path = out_dir / f"{base_name}.pdf"
     html_path = out_dir / f"{base_name}.html"
-    md_path = out_dir / f"{base_name}.md"
 
     # Write HTML
     html_content = build_resume_html(resume_data)
@@ -209,8 +190,8 @@ async def generate_tailored_resume(company: str, job_title: str, jd_text: str = 
         await page.pdf(
             path=str(pdf_path),
             print_background=True,
-            margin={"top": "0.3in", "bottom": "0.3in", "left": "0.3in", "right": "0.3in"},
-            format="Letter"
+            margin={"top": "0.35in", "bottom": "0.35in", "left": "0.4in", "right": "0.4in"},
+            format="A4"
         )
 
         # PNG Preview Page
