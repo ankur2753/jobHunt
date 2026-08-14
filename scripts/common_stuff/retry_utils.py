@@ -239,6 +239,75 @@ async def retry_until_enabled(
     return False
 
 
+async def dismiss_overlays_and_popups(page) -> int:
+    """
+    Detect and dismiss cookie consent banners, chatbot widgets, and popups that obscure form fields.
+    Returns the number of popups/banners dismissed.
+    """
+    if not page:
+        return 0
+
+    dismissed_count = 0
+    
+    # Common selectors for cookie consent & privacy popups
+    COOKIE_PATTERNS = [
+        '#accept-all',
+        '#onetrust-accept-btn-handler',
+        'button:has-text("Accept All Cookies")',
+        'button:has-text("Accept All")',
+        'button:has-text("Accept cookies")',
+        'button:has-text("Accept")',
+        'button:has-text("Allow All")',
+        'button:has-text("Got It")',
+        'button:has-text("I Agree")',
+        '.cookie-accept',
+        '.accept-cookies',
+        '.cc-btn.cc-dismiss',
+        '[id*="cookie"] button',
+        '[class*="cookie"] button'
+    ]
+
+    # Common selectors for modal popups & chatbot widgets
+    POPUP_PATTERNS = [
+        'button[aria-label="Close"]',
+        'button[aria-label="close"]',
+        'button[aria-label="Dismiss"]',
+        '.popup-close',
+        '.modal-close',
+        '.close-popup',
+        'button:has-text("Dismiss")',
+        '[class*="close-button"]',
+        '[class*="closeBtn"]'
+    ]
+
+    # 1. Dismiss Cookie Banners
+    for selector in COOKIE_PATTERNS:
+        try:
+            btn = page.locator(selector).first
+            if await btn.count() > 0 and await btn.is_visible(timeout=1000):
+                logger.info(f"🍪 Dismissing cookie/privacy banner via: {selector}")
+                await btn.click()
+                await page.wait_for_timeout(500)
+                dismissed_count += 1
+                break
+        except Exception:
+            pass
+
+    # 2. Dismiss Overlay Popups
+    for selector in POPUP_PATTERNS:
+        try:
+            btn = page.locator(selector).first
+            if await btn.count() > 0 and await btn.is_visible(timeout=1000):
+                logger.info(f"✖️ Dismissing popup overlay via: {selector}")
+                await btn.click()
+                await page.wait_for_timeout(500)
+                dismissed_count += 1
+        except Exception:
+            pass
+
+    return dismissed_count
+
+
 if __name__ == "__main__":
     print("Retry utilities for Naukri automation")
-    print("Usage: from scripts.common_stuff.retry_utils import retry_async")
+    print("Usage: from scripts.common_stuff.retry_utils import retry_async, dismiss_overlays_and_popups")

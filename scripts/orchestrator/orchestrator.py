@@ -76,6 +76,43 @@ def compute_review_mode(portal: str, args=None) -> bool:
     return False
 
 
+def safe_load_json(file_path, default: dict = None) -> dict:
+    """Safely load JSON data from a file with graceful fallbacks for empty or corrupted files."""
+    if default is None:
+        default = {}
+    file_path = Path(file_path)
+    if not file_path.exists():
+        example_path = file_path.parent / (file_path.stem + ".example.json")
+        if example_path.exists():
+            try:
+                with open(example_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return default
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            if not content:
+                example_path = file_path.parent / (file_path.stem + ".example.json")
+                if example_path.exists():
+                    with open(example_path, 'r', encoding='utf-8') as f_ex:
+                        return json.load(f_ex)
+                return default
+            return json.loads(content)
+    except Exception as e:
+        logger.warning(f"⚠️ Warning loading JSON from {file_path}: {e}. Falling back to default.")
+        example_path = file_path.parent / (file_path.stem + ".example.json")
+        if example_path.exists():
+            try:
+                with open(example_path, 'r', encoding='utf-8') as f_ex:
+                    return json.load(f_ex)
+            except Exception:
+                pass
+        return default
+
+
 class LinkedInPlaywright:
     def __init__(self, cookies_file: str = "../../personal_details/linkedin_cookies.json"):
         script_dir = Path(__file__).parent
@@ -232,8 +269,21 @@ async def main(args=None):
         print("1. LinkedIn")
         print("2. Naukri")
         print("3. InstaHyre")
+        print("4. Custom ATS / External Job URLs (Workday, Greenhouse, Lever, etc.)")
 
-        website_choice = input("Enter your choice (1, 2, or 3): ")
+        website_choice = input("Enter your choice (1, 2, 3, or 4): ")
+
+        if website_choice == '4':
+            from scripts.applying_to_portals.apply_custom_job import apply_to_custom_url
+            job_url = input("Enter custom job URL (e.g. Workday, Greenhouse, Lever link): ").strip()
+            if not job_url:
+                print("❌ No URL provided.")
+                return
+            
+            review_mode = compute_review_mode('custom', args)
+            print(f"\n🌐 Applying to Custom Job URL: {job_url} (review_mode={review_mode})...")
+            await apply_to_custom_url(job_url, review_mode=review_mode)
+            return
 
         if website_choice == '1':
             browser_manager = LinkedInPlaywright()
@@ -261,7 +311,7 @@ async def main(args=None):
             print("Coming soon!")
             return
         else:
-            print("Invalid choice. Please enter 1, 2, or 3.")
+            print("Invalid choice. Please enter 1, 2, 3, or 4.")
             return
 
         print("What would you like to do?")
@@ -294,19 +344,16 @@ async def main(args=None):
                 job_prefs_path = project_root / "personal_details" / "job_prefrences.json"
                 user_details_path = project_root / "personal_details" / "user_details.json"
 
-                if not job_prefs_path.exists() or not user_details_path.exists():
-                    print(f"⚠️ Missing personal details or job preferences files.")
-                    print(f"Ensure 'job_prefrences.json' and 'user_details.json' exist in the 'personal_details/' directory.")
-                    return
+                job_prefs = safe_load_json(job_prefs_path, default={'targetTitles': ['Software Engineer'], 'preferredLocations': ['Remote']})
+                user_details = safe_load_json(user_details_path, default={})
 
-                with open(job_prefs_path, 'r') as f:
-                    job_prefs = json.load(f)
-                
-                with open(user_details_path, 'r') as f:
-                    user_details = json.load(f)
+                titles = job_prefs.get('targetTitles') or job_prefs.get('keywords') or ['Software Engineer']
+                locs = job_prefs.get('preferredLocations') or job_prefs.get('locations') or ['Remote']
+                default_title = titles[0] if isinstance(titles, list) and titles else 'Software Engineer'
+                default_loc = locs[0] if isinstance(locs, list) and locs else 'Remote'
 
-                job_title = input(f"Enter job title to search for (default: {job_prefs.get('targetTitles', ['Software Engineer'])[0]}): ").strip() or job_prefs.get('targetTitles', ['Software Engineer'])[0]
-                location = input(f"Enter location (default: {job_prefs.get('preferredLocations', ['Remote'])[0]}): ").strip() or job_prefs.get('preferredLocations', ['Remote'])[0]
+                job_title = input(f"Enter job title to search for (default: {default_title}): ").strip() or default_title
+                location = input(f"Enter location (default: {default_loc}): ").strip() or default_loc
                 max_apps_str = input("Maximum number of applications (default 5): ").strip() or "5"
                 max_apps = int(max_apps_str)
 
@@ -365,20 +412,18 @@ async def main(args=None):
         elif choice == '3':
             print("Starting the process to scrape recent job links...")
             if website_choice == '1':
-                # Load job preferences and user details to get default values
                 project_root = Path(__file__).parent.parent.parent
                 job_prefs_path = project_root / "personal_details" / "job_prefrences.json"
 
-                if not job_prefs_path.exists():
-                    print(f"⚠️ Missing job preferences file.")
-                    print(f"Ensure 'job_prefrences.json' exists in the 'personal_details/' directory.")
-                    return
+                job_prefs = safe_load_json(job_prefs_path, default={'targetTitles': ['Software Engineer'], 'preferredLocations': ['Remote']})
 
-                with open(job_prefs_path, 'r') as f:
-                    job_prefs = json.load(f)
+                titles = job_prefs.get('targetTitles') or job_prefs.get('keywords') or ['Software Engineer']
+                locs = job_prefs.get('preferredLocations') or job_prefs.get('locations') or ['Remote']
+                default_title = titles[0] if isinstance(titles, list) and titles else 'Software Engineer'
+                default_loc = locs[0] if isinstance(locs, list) and locs else 'Remote'
 
-                job_title = input(f"Enter job title to search for (default: {job_prefs.get('targetTitles', ['Software Engineer'])[0]}): ").strip() or job_prefs.get('targetTitles', ['Software Engineer'])[0]
-                location = input(f"Enter location (default: {job_prefs.get('preferredLocations', ['Remote'])[0]}): ").strip() or job_prefs.get('preferredLocations', ['Remote'])[0]
+                job_title = input(f"Enter job title to search for (default: {default_title}): ").strip() or default_title
+                location = input(f"Enter location (default: {default_loc}): ").strip() or default_loc
                 
                 scraper = LinkedInJobScraper(browser_manager.page, job_title, location)
                 await scraper.scrape_jobs()

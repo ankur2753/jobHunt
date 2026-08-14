@@ -8,6 +8,7 @@
 
 | Node | Description |
 |------|-------------|
+| [[RESUME_TAILORING_ENGINE]] | 1-Page A4 Resume & Cover Letter Automation, Provider-Agnostic LLM & Telegram Bot Integration |
 | [[ARCHITECTURE]] | 3-layer system design and data flow |
 | [[COMPONENTS]] | Every script/module with purpose and status |
 | [[WORKFLOWS]] | Step-by-step execution flows per feature |
@@ -22,7 +23,7 @@
 Automate the full job search lifecycle:
 
 ```
-Scrape Jobs → Personalize Application → Apply → Network → Follow Up
+Scrape Jobs → Tailor 1-Page A4 Resume & Cover Letter → Personalize Application → Apply → Network → Follow Up
 ```
 
 All steps run via scripts first; LLM agents take over only when scripts fail.
@@ -36,25 +37,37 @@ agent/
 ├── config/
 │   └── requirements.txt          # pip dependencies
 ├── docker_files/                 # Containerization (future)
-├── Instructions/                 # ← You are here (knowledge graph)
+├── Instructions/                 # ← You are here (Obsidian knowledge graph)
 │   ├── CLAUDE.md
 │   ├── PROJECT_MAP.md
+│   ├── RESUME_TAILORING_ENGINE.md # ← 1-Page A4 Tailoring & Telegram Bot Node
 │   ├── ARCHITECTURE.md
 │   ├── COMPONENTS.md
 │   ├── WORKFLOWS.md
 │   ├── REQUIREMENTS.md
 │   └── KNOWN_BUGS.md
-├── personal_details/             # Legacy JSON + cookie files
-│   ├── user_details.json         # (legacy, replaced by vector DB)
-│   ├── job_prefrences.json       # (legacy, still used by LinkedIn flow)
-│   ├── linkedin_cookies.json
-│   └── naukri_cookies.json
-├── resumes/                      # Generated resumes
+├── personal_details/             # User details + cookies
+├── prompts/                      # Modular LLM Prompt Library
+│   ├── job_analysis_prompt.md
+│   ├── resume_tailoring_prompt.md
+│   ├── cover_letter_prompt.md
+│   ├── linkedin_outreach_prompt.md
+│   └── telegram_bot_prompt.md
+├── resumes/                      # Master resume & tailored A4 PDFs
+│   ├── resume_master.md
+│   └── tailored/
 ├── scripts/
+│   ├── cli_tailor.py             # Automation engine entrypoint (URL/Text -> A4 PDFs)
+│   ├── build_philips_application.py
+│   ├── TELEGRAM_INTEGRATION.md   # Telegram Bot JSON-RPC Protocol docs
+│   ├── examples/
+│   │   └── telegram_bot_sample.py # Python Telegram Bot handler
 │   ├── applying_to_portals/
 │   │   └── linkedin_apply.py
 │   ├── common_stuff/             # Shared utilities
+│   │   ├── llm_fallback.py       # Provider-agnostic LLM query engine
 │   │   ├── chatbot_form_filler.py
+│   │   ├── cold_outreach_generator.py
 │   │   ├── answer_validators.py
 │   │   ├── vector_db_manager.py
 │   │   ├── retry_utils.py

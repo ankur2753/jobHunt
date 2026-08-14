@@ -1,4 +1,7 @@
 from typing import Optional
+import asyncio
+from playwright.async_api import Page
+from scripts.applying_to_portals.apply_custom_job import apply_to_custom_url
 
 class LinkedInJobApply:
     def __init__(self, page: Page, review_mode: bool = True):
@@ -13,6 +16,7 @@ class LinkedInJobApply:
             "job_cards": "div.job-card-container--clickable",
             # Easy Apply process
             "easy_apply_button": "button:has-text('Easy Apply')",
+            "external_apply_button": 'a.jobs-apply-button, button:has-text("Apply")',
             "next_button": 'button[aria-label*="Continue"], button:has-text("Next")',
             "submit_button": 'button[aria-label*="Submit application"]',
             "review_button": 'button[aria-label*="Review"]',
@@ -54,19 +58,30 @@ class LinkedInJobApply:
 
             try:
                 easy_apply_button = self.page.locator(self.selectors["easy_apply_button"]).first
-                await easy_apply_button.click()
+                if await easy_apply_button.count() > 0 and await easy_apply_button.is_visible():
+                    await easy_apply_button.click()
 
-                modal = self.page.locator(self.selectors["modal"])
-                if await modal.is_visible():
-                    print("Applying to a job...")
-                    if effective_review_mode:
-                        print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
-                        input("Press Enter after submitting to continue...")
-                    else:
-                        # This is where the logic to fill the form will go.
-                        # For now, we'll just close the modal.
-                        await self.page.click(self.selectors["close_modal"])
-                        print("Closed application modal (for now).")
+                    modal = self.page.locator(self.selectors["modal"])
+                    if await modal.is_visible():
+                        print("Applying to a job via Easy Apply...")
+                        if effective_review_mode:
+                            print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+                            input("Press Enter after submitting to continue...")
+                        else:
+                            await self.page.click(self.selectors["close_modal"])
+                            print("Closed application modal (for now).")
+                else:
+                    # Check for External Apply button
+                    ext_apply_btn = self.page.locator(self.selectors["external_apply_button"]).first
+                    if await ext_apply_btn.count() > 0 and await ext_apply_btn.is_visible():
+                        print("🌐 External Apply link detected on LinkedIn! Intercepting tab/URL...")
+                        async with self.page.context.expect_page() as new_page_info:
+                            await ext_apply_btn.click()
+                        new_page = await new_page_info.value
+                        await new_page.wait_for_load_state("domcontentloaded")
+                        ext_url = new_page.url
+                        print(f"Routing to Custom ATS Engine for URL: {ext_url}")
+                        await apply_to_custom_url(ext_url, review_mode=effective_review_mode, page=new_page)
 
             except Exception as e:
                 print(f"Could not apply to a job: {e}")

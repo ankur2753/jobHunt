@@ -11,7 +11,7 @@ The system separates concerns across three tiers so that the most reliable (scri
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Layer 3: Agent / LLM                               │
-│  Claude Desktop via MCP, or direct API call         │
+│  MCP-compatible Agent (e.g., Hermes, Claude, etc.)  │
 │  Role: Dynamic problem-solving, context handover    │
 └──────────────────────┬──────────────────────────────┘
                        │ fallback / error resolution
@@ -39,7 +39,7 @@ The system separates concerns across three tiers so that the most reliable (scri
 ```
 Script fails
     → Orchestrator retries (retry_utils.py @retry_async)
-    → Still fails → Pass context to LLM Agent (Claude via MCP)
+    → Still fails → Pass context to LLM Agent (via MCP)
     → LLM resolves or applies dynamic fix
     → Still fails → Notify user via Telegram bot
     → User intervenes manually
@@ -88,7 +88,7 @@ release_lock()  # always called in finally block
 
 ### MCP Server (`mcp_server.py`)
 - Exposes core automation as MCP tools
-- Claude Desktop can call these tools directly
+- Any MCP-compatible Agent (Hermes, Claude, Antigravity, etc.) can call these tools directly
 - Allows LLM to trigger `check_linkedin_login`, `apply_to_jobs`, etc.
 
 ---

@@ -32,7 +32,7 @@ Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[COMPONENTS]]
 ---
 
 ### BUG-002: Naukri Auto-Apply Not Validated on Live Site
-**Status**: ⚠️ Unverified  
+**Status**: FIXED  
 **Severity**: High  
 **Source**: `Instructions/IMPLEMENTATION_SUMMARY.md` — "Not tested on real Naukri jobs yet"
 
@@ -52,7 +52,7 @@ python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
 ---
 
 ### BUG-003: Multi-Step Naukri Forms Not Handled
-**Status**: ❌ Open (planned Phase 7)  
+**Status**: FIXED  
 **Severity**: Medium  
 **Source**: `IMPLEMENTATION_SUMMARY.md` — "Multi-step forms — Not yet handled"
 
@@ -71,7 +71,7 @@ python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
 ## Medium Bugs
 
 ### BUG-004: NLA Popup Selector Not Specific Enough
-**Status**: ⚠️ Open  
+**Status**: FIXED  
 **Severity**: Medium  
 **Source**: `NAUKRI_SELECTOR_ANALYSIS.md`
 
@@ -84,7 +84,7 @@ python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
 ---
 
 ### BUG-005: LinkedIn Apply Uses Legacy JSON Instead of Vector DB
-**Status**: ⚠️ Open (tech debt)  
+**Status**: ⚠️ Open (tech debt)  (to be verified if fixed)
 **Severity**: Medium  
 **Source**: `scripts/orchestrator/orchestrator.py` lines 215-229
 
@@ -97,7 +97,7 @@ python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
 ---
 
 ### BUG-006: Company Name Selector Fails on Some Naukri Pages
-**Status**: ⚠️ Open (partially mitigated)  
+**Status**: ⚠️ Open (partially mitigated)  (to be verified )
 **Severity**: Low  
 **Source**: `NAUKRI_SELECTOR_ANALYSIS.md`
 
@@ -123,7 +123,7 @@ python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
 ---
 
 ### BUG-008: Resume Modifier Not Integrated
-**Status**: ❌ Not integrated  
+**Status**: partialy Fixed (Verify)
 **Severity**: Low  
 
 **Symptom**: `scripts/orchestrator/resume_modifier.py` exists but is not called from the orchestrator menu. Personalized resume generation is not part of any active workflow.

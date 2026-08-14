@@ -4,8 +4,10 @@ import sys
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
-# Add project root to path to import other modules
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+# Add project root to path to import other modules and change working directory to project root
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+os.chdir(PROJECT_ROOT)
+sys.path.append(str(PROJECT_ROOT))
 
 from scripts.orchestrator.orchestrator import LinkedInPlaywright
 from scripts.job_scraping.linkedin_job_apply import LinkedInJobApply
@@ -301,6 +303,25 @@ async def browser_screenshot(path: str = "logs/browser_screenshot.png", portal: 
         return f"Screenshot saved successfully to {path}"
     except Exception as e:
         return f"Error taking screenshot: {str(e)}"
+
+@mcp.tool()
+async def apply_to_custom_job_url(url: str, review_mode: bool = True) -> str:
+    """
+    Automatically fill and apply to any custom job URL (Workday, Greenhouse, Lever, SmartRecruiters, Ashby, Generic ATS).
+    
+    Args:
+        url: Target custom or external job application URL
+        review_mode: If True (default), pauses before final submission for user review.
+    """
+    try:
+        from scripts.applying_to_portals.apply_custom_job import apply_to_custom_url
+        success = await apply_to_custom_url(url=url, review_mode=review_mode)
+        if success:
+            return f"Successfully processed application for {url} (review_mode={review_mode})."
+        else:
+            return f"Failed to complete application for {url}."
+    except Exception as e:
+        return f"Error applying to custom job URL: {str(e)}"
 
 if __name__ == "__main__":
     # Start the MCP server using stdio transport

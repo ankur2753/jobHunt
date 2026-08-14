@@ -1,250 +1,161 @@
-# Automated Job Search Agent
+# Automated Job Search & Resume Tailoring Agent
 
-A multi-portal automation system that scrapes job postings, fills application forms using semantic matching against a personal vector database, and logs job application status — with progressive fallback from scripts to LLM agents.
+A powerful engineering platform that automates **1-page A4 ATS-optimized resume tailoring, job-specific cover letters, recruiter outreach generation, and job portal application workflows**. 
+
+Driven by a **provider-agnostic LLM engine** (Gemini, OpenAI, OpenRouter, Anthropic, or local OpenAI endpoints) and a **Playwright rendering pipeline**, it interfaces seamlessly with CLI tools, local Telegram bots, and web applications.
 
 ```
-Scrape Jobs → Match & Personalize → Auto-Apply → Log Results (Google Sheets) → Outreach
+Job URL / JD Text ──► Scraper & LLM Analysis ──► Provider-Agnostic LLM Engine ──► Playwright PDF Renderer ──► 1-Page A4 Resume & Cover Letter + LinkedIn DM
 ```
 
 ---
 
 ## 🚀 Key Features
 
-* **Deterministic & Semantic Form Filling**: Uses a hybrid approach (Deterministic Canonical Rules + ChromaDB Vector Search using `all-MiniLM-L6-v2`) to answer job application questions with high confidence.
-* **Naukri Module**: Fully functional automated job searching, chatbot form filling, and job application submission.
-* **Google Sheets Application Reporting**: Real-time logging of applied jobs, status, timestamps, and answered questions via Google Apps Script Webhooks.
-* **Privacy & Multi-User Support**: Completely configurable for any user with zero hardcoded personal data. All sensitive personal details, cookies, and local databases are safely ignored by Git.
+* **1-Page A4 Executive Resume Engine**: Renders clean, ATS-compliant, single-page A4 PDFs (`Ankur_Kumar_[Company]_Resume.pdf`) that fill ~92% of page budget without overflow or awkward half-page whitespace.
+* **Provider-Agnostic LLM Core**: Supports Google Gemini (`GEMINI_API_KEY`), OpenAI (`OPENAI_API_KEY`), OpenRouter (`OPENROUTER_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`), or generic OpenAI endpoints (`LLM_API_KEY` + `LLM_BASE_URL`).
+* **Automated Job URL Scraping**: Uses Playwright with `domcontentloaded` fallback navigation to reliably extract job postings across complex enterprise portals (Greenhouse, Workday, Lever, Phenom, LinkedIn).
+* **Controlled Tailoring & Disclosure**: Automatically tracks verified experience, reasonable inferences, under-represented stack items, and role-specific skill additions.
+* **JSON-RPC / CLI Interface**: Single command execution (`scripts/cli_tailor.py`) producing structured JSON for Telegram bots, web apps, and workflow scripts.
+* **Telegram Bot Integration**: Full sample Telegram bot code (`scripts/examples/telegram_bot_sample.py`) enabling instant mobile application generation via Telegram chat.
+* **Modular Prompt Library**: Structured prompt templates in `prompts/` for job parsing, resume tailoring, cover letter drafting, outreach, and Telegram bot agent protocols.
 
 ---
 
-## 🛠️ System Architecture
+## 🤖 System Architecture
 
+```mermaid
+graph TD
+    UserTelegram["Telegram App (Mobile/Desktop)"] -->|Send Job URL / Text| BotHandler["Local Telegram Bot"]
+    CLIUser["CLI / Subprocess / Web App"] -->|Invoke CLI Command| CLI_Engine["scripts/cli_tailor.py"]
+    
+    BotHandler -->|Subprocess JSON-RPC| CLI_Engine
+    
+    CLI_Engine --> Scraper["Playwright DOM Scraper"]
+    CLI_Engine --> LLMFallback["scripts/common_stuff/llm_fallback.py"]
+    
+    LLMFallback -->|Check API Keys| LLMProvider{"Configured LLM Provider"}
+    LLMProvider -->|Gemini API| Gemini["Google Gemini 2.5 Flash"]
+    LLMProvider -->|OpenAI API| OpenAI["OpenAI GPT-4o / GPT-4o-mini"]
+    LLMProvider -->|OpenRouter API| OpenRouter["OpenRouter / Auto"]
+    LLMProvider -->|Anthropic API| Anthropic["Claude 3.5 Haiku"]
+    LLMProvider -->|Local / Custom| Generic["Local Ollama / vLLM / Groq"]
+    
+    CLI_Engine --> PDFBuilder["Playwright A4 PDF Engine"]
+    
+    PDFBuilder --> ResumePDF["1-Page A4 Resume PDF"]
+    PDFBuilder --> CoverPDF["1-Page A4 Cover Letter PDF"]
+    CLI_Engine --> OutreachDM["LinkedIn Recruiter DM"]
+    
+    ResumePDF --> BotHandler
+    CoverPDF --> BotHandler
+    OutreachDM --> BotHandler
+    
+    BotHandler -->|Upload PDF Documents & Send DM| UserTelegram
 ```
-┌───────────────────────────────────────────────┐
-│  Layer 3: Agent / LLM                          │  Dynamic problem-solving &
-│  Claude Desktop via MCP, or direct LLM API     │  outreach message generation
-└──────────────────────┬─────────────────────────┘
-                       │ fallback / error resolution
-┌──────────────────────▼─────────────────────────┐
-│  Layer 2: Orchestrator                         │  Sequences tasks, routes
-│  scripts/orchestrator/orchestrator.py          │  errors, manages browser lock
-└──────────────────────┬─────────────────────────┘
-                       │ invokes tools
-┌──────────────────────▼─────────────────────────┐
-│  Layer 1: Playwright Automation                │  Deterministic browser
-│  Naukri, LinkedIn, InstaHyre modules           │  interactions & form filling
-└────────────────────────────────────────────────┘
-```
 
 ---
 
-## 📦 Feature Status Matrix
+## ⚙️ Environment Configuration (`.env`)
 
-| Feature | Naukri | LinkedIn | InstaHyre |
-|---------|--------|----------|-----------|
-| Cookie Login | ✅ | ✅ | ✅ |
-| Manual Login Fallback | ✅ | ✅ | ✅ |
-| Job Scraping & Apply | ✅ | ⚠️ Partial | ❌ |
-| Chatbot Form Filling | ✅ | ✅ | ❌ |
-| Google Sheets Logging | ✅ | ✅ | ✅ |
-| ATS Resume Tailoring | ✅ | ✅ | ✅ |
-
----
-
-## ⚙️ Setup & Configuration Guide
-
-Follow these steps to set up the agent for your own personal job search.
-
-### 1. Prerequisites & Installation
-
-* **Python 3.10+**
-* **Chromium Browser** (via Playwright)
-* **Linux / macOS / Windows**
+Configure your preferred LLM provider in `.env`. The system is 100% provider-agnostic and will automatically select whichever API key is present:
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/jobHunt.git
-cd jobHunt
+# Option A: Google Gemini API (Recommended Free/Fast)
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
 
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+# Option B: OpenAI API
+OPENAI_API_KEY=sk-proj-your_openai_api_key_here
+OPENAI_MODEL=gpt-4o-mini
 
-# Install dependencies
-pip install -r config/requirements.txt
+# Option C: OpenRouter API
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key_here
+OPENROUTER_MODEL=openrouter/auto
 
-# Install Playwright browser binaries
-playwright install chromium
+# Option D: Generic OpenAI-Compatible Endpoint (Local Ollama, vLLM, DeepSeek, Groq, etc.)
+LLM_API_KEY=your_local_or_custom_key
+LLM_BASE_URL=http://localhost:11434/v1/chat/completions
+LLM_MODEL=llama3
 ```
 
 ---
 
-### 2. Environment Variables Setup (`.env`)
+## 💻 CLI Usage (`cli_tailor.py`)
 
-Copy `.env.example` to create your local `.env` configuration file:
+Run the automation tool directly from the terminal or call it via subprocess:
 
+### 1. Tailor from Job Posting URL
 ```bash
-cp .env.example .env
+python3 scripts/cli_tailor.py \
+  --url "https://www.cohesity.com/careers/open-positions/?gh_jid=ddd581b5f17d1001ebb5bcba5f6c0000&type=wd" \
+  --json
 ```
 
-Open `.env` and set your API keys and webhook URL:
-
-```env
-# OpenRouter / LLM API Key (for LLM fallback & cold outreach generation)
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-
-# Google Sheets Webhook URL for Application Reporting (See section below)
-GOOGLE_SHEETS_WEBHOOK_URL=https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec
-```
-
----
-
-### 3. Personal Profile Configuration
-
-Copy the example template files in `personal_details/` to configure your profile details:
-
+### 2. Tailor from Raw Job Description Text
 ```bash
-# Copy template files
-cp personal_details/personal_details.example.json personal_details/personal_details.json
-cp personal_details/custom_details.example.json personal_details/custom_details.json
-cp personal_details/config.example.json personal_details/config.json
-cp personal_details/job_prefrences.example.json personal_details/job_prefrences.json
-cp resumes/resume_master.example.md resumes/resume_master.md
+python3 scripts/cli_tailor.py \
+  --jd-text "We are hiring a Senior QA Engineer skilled in Java, Selenium, REST API testing, and Playwright..." \
+  --json
 ```
-
-#### File Descriptions:
-
-1. **`personal_details/personal_details.json`**: Enter your contact details, work experience, education, salary expectations, notice period, and core skills.
-2. **`personal_details/config.json`**: Define your job target preferences (preferred job titles, locations, excluded companies, experience level).
-3. **`resumes/resume_master.md`**: Your master Markdown resume used for ATS tailoring.
 
 ---
 
-### 4. Vector Database Initialization
+## 📡 JSON-RPC & API Output Schema
 
-Populate ChromaDB vector database with your personal profile answers:
+When `--json` is supplied, `cli_tailor.py` returns structured JSON:
 
+```json
+{
+  "status": "success",
+  "company": "Cohesity",
+  "role": "Senior Performance Engineer, Data Protection & Security Platform Engineering",
+  "resume_pdf": "/path/to/resumes/tailored/Resume_Cohesity_SeniorPerformanceEngineer_20260809.pdf",
+  "cover_letter_pdf": "/path/to/resumes/tailored/Cover_Letter_Cohesity_SeniorPerformanceEngineer_20260809.pdf",
+  "linkedin_dm": "Hi! I noticed the open Senior Performance Engineer position at Cohesity and wanted to reach out. As a Senior QA Engineer specializing in Java/Selenium and Playwright test automation, I'd love to connect and share how my background fits your team's goals!"
+}
+```
+
+---
+
+## 📲 Telegram Bot Integration
+
+The job hunt agent is natively integrated with the **[`my-personal-tg-bot`](file:///home/ankurkumar/ankur_code/my-personal-tg-bot)** Universal Multi-Agent Gateway.
+
+Instead of running a standalone script, the agent runs via a robust `Procfile` deployment that handles Redis Pub/Sub orchestration.
+
+### Quick Start (Production Mode)
 ```bash
-# Seed vector DB from your personal_details.json
-python scripts/seed_profile_answers.py
-
-# Verify stored facts and retrieval confidence
-python scripts/seed_profile_answers.py --verify
+# In the agent repository:
+honcho start
 ```
+
+### Interaction Flow:
+1. `honcho` automatically spins up the local Redis server, the central `my-personal-tg-bot` gateway, and the `redis_gateway.py` worker process.
+2. User sends a Job URL (e.g., `/job <url>`) to the Telegram Bot.
+3. The central gateway routes the intent via a secure `MessageEnvelope` to the `agent.job-hunt.requests` Redis Stream.
+4. `redis_gateway.py` detects the message, invokes the background CLI worker, and publishes the tailored resume PDF and LinkedIn DM back to `agent.job-hunt.responses`.
+5. The bot delivers the tailored PDF and outreach text directly to your phone.
+
+For more information, see the `my-personal-tg-bot` central gateway repository.
 
 ---
 
-## 📊 Google Sheets Reporting Setup
+## 📚 Prompt Library Reference (`prompts/`)
 
-The system automatically logs every completed job application to a Google Sheet using a lightweight Google Apps Script Webhook.
+The repository includes modular prompt markdown templates located in the `prompts/` directory:
 
-```
-Application Completed → remote_logger.py → Google Apps Script Webhook → Google Sheet Row Added
-```
-
-### Step-by-Step Setup:
-
-1. **Create a Google Sheet**:
-   * Open [Google Sheets](https://sheets.google.com) and create a new blank spreadsheet (e.g. named `Job Application Tracker`).
-
-2. **Open Apps Script Editor**:
-   * Click on **Extensions** → **Apps Script**.
-
-3. **Paste the Script**:
-   * Copy the full content of [`scripts/common_stuff/google_apps_script.js`](scripts/common_stuff/google_apps_script.js) and paste it into the Apps Script code editor (replace any default code).
-
-4. **Deploy as Web App**:
-   * Click **Deploy** → **New deployment**.
-   * Click **Select type** (gear icon) → **Web app**.
-   * Fill out the fields:
-     * **Description**: `Job Hunt Remote Logger`
-     * **Execute as**: `Me (your-email@gmail.com)`
-     * **Who has access**: `Anyone` *(Crucial: allows the script to post without complex OAuth flow)*.
-   * Click **Deploy**. Authorize access when prompted.
-
-5. **Copy Web App URL**:
-   * Copy the generated **Web App URL** (looks like `https://script.google.com/macros/s/AKfycb.../exec`).
-
-6. **Add to `.env`**:
-   * Paste the URL into your `.env` file:
-     ```env
-     GOOGLE_SHEETS_WEBHOOK_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
-     ```
-
-7. **Test Google Sheets Logging**:
-   ```bash
-   python scripts/tests/test_remote_logger.py
-   ```
-   Check your Google Sheet! You will see automatic headers `[Timestamp, Job Title, Company, Portal, Status, Questions Answered]` and a test row added.
+| Prompt File | Description | Link |
+|---|---|---|
+| `job_analysis_prompt.md` | Extracts Must-Have, Nice-To-Have, and metadata from job text. | [`prompts/job_analysis_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/job_analysis_prompt.md) |
+| `resume_tailoring_prompt.md` | System prompt & controlled disclosure rules for 1-page A4 resume tailoring. | [`prompts/resume_tailoring_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/resume_tailoring_prompt.md) |
+| `cover_letter_prompt.md` | 1-page A4 technical cover letter generation prompt. | [`prompts/cover_letter_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/cover_letter_prompt.md) |
+| `linkedin_outreach_prompt.md` | Concise 2-3 sentence recruiter cold outreach DM prompt. | [`prompts/linkedin_outreach_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/linkedin_outreach_prompt.md) |
+| `telegram_bot_prompt.md` | System prompt and JSON-RPC protocol specs for Telegram Bot AI agents. | [`prompts/telegram_bot_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/telegram_bot_prompt.md) |
 
 ---
 
-## 🏃 Execution Guide
+## 📄 License & Open-Source Security
 
-### First-Time Login (Save Session Cookies)
-
-Run the orchestrator CLI menu to perform initial login:
-
-```bash
-python scripts/orchestrator/orchestrator.py
-```
-
-1. Select **Naukri** (or LinkedIn/InstaHyre).
-2. Choose **Login manually**.
-3. Complete the login inside the Playwright browser window.
-4. Session cookies are automatically saved to `personal_details/naukri_cookies.json` for headless runs.
-
-### Run Naukri Auto-Apply
-
-```bash
-# Run automated Naukri search and apply flow via Orchestrator CLI
-python scripts/orchestrator/orchestrator.py
-
-# Or run Naukri job application script directly:
-python scripts/job_scraping/naukri_job_apply.py
-```
-
----
-
-## 🔒 Security & Privacy
-
-This codebase is configured to keep all personal data local and private:
-
-* **Ignored by Git**: `.env`, `personal_details/*.json` (except templates), `vector_db/`, session cookies (`*_cookies.json`), and generated PDFs/resumes are excluded via `.gitignore`.
-* **No Telemetry**: No personal credentials or application history leave your machine except to your configured Google Sheet webhook and target job portals.
-
----
-
-## 📂 Repository Structure
-
-```
-jobHunt/
-├── config/requirements.txt          # Python dependencies
-├── Instructions/                     # Knowledge-graph design documentation
-├── personal_details/                 # Local user config & cookies (Git ignored)
-│   ├── personal_details.example.json # Example profile configuration
-│   ├── custom_details.example.json   # Example learned Q&A template
-│   ├── config.example.json           # Example target preferences template
-│   └── job_prefrences.example.json   # Example search preferences template
-├── resumes/                          # Master & tailored Markdown/PDF resumes
-│   └── resume_master.example.md      # Template master resume
-├── scripts/
-│   ├── applying_to_portals/          # Submission scripts
-│   ├── common_stuff/                 # Vector DB, Google Sheets logger, Form filler
-│   │   ├── google_apps_script.js    # Google Apps Script template for Sheets
-│   │   ├── remote_logger.py         # Google Sheets Webhook logger client
-│   │   ├── vector_db_manager.py     # ChromaDB client & canonical evaluator
-│   │   └── chatbot_form_filler.py   # RAG form filler engine
-│   ├── cookie_management_login/      # Portal login & session persistence
-│   ├── job_scraping/                 # Naukri & LinkedIn job apply runners
-│   ├── networking/                   # LinkedIn cold outreach & referral helpers
-│   └── orchestrator/                 # Main CLI menu & MCP server
-├── .env.example                      # Environment variables template
-└── README.md                         # Main documentation
-```
-
----
-
-## 📄 License
-
-MIT License. Free for personal use and customization.
+* Personal sensitive details are maintained in `resumes/resume_master.md` and `.env` (ignored by `.gitignore`).
+* Open-source template provided in `resumes/resume_master.example.md`.

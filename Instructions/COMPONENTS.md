@@ -33,12 +33,54 @@ Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[WORKFLOWS]]
 ---
 
 ### `scripts/orchestrator/resume_modifier.py`
-**Role**: LLM-powered resume customization per job posting.
+**Role**: Legacy LLM-powered resume customization per job posting.
 
-- Uses personal data to tailor resume/cover letter for specific jobs
-- Status: Partially implemented
+- Superseded by the new 1-page A4 [[RESUME_TAILORING_ENGINE]] (`scripts/cli_tailor.py`).
 
 ---
+
+## Resume & Document Automation Engine ([[RESUME_TAILORING_ENGINE]])
+
+### `scripts/cli_tailor.py` (~520 LOC)
+**Role**: Standalone automation engine CLI & Python module.
+
+- Scrapes Job URLs (Playwright `domcontentloaded` fallback) or accepts raw JD text snippets
+- Interacts with provider-agnostic LLM fallback system (`scripts/common_stuff/llm_fallback.py`)
+- Renders **1-page A4 Resume PDF** (`Ankur_Kumar_[Company]_Resume.pdf`) and **1-page A4 Cover Letter PDF**
+- Generates **LinkedIn Recruiter Cold Outreach DM text**
+- Outputs clean JSON for Telegram bots and web APIs (`--json`)
+
+---
+
+### `scripts/common_stuff/llm_fallback.py` (~180 LOC)
+**Role**: Provider-agnostic LLM query engine.
+
+- Dynamically selects LLM provider based on available environment variables:
+  * `GEMINI_API_KEY` (Google Gemini)
+  * `OPENAI_API_KEY` (OpenAI GPT-4o-mini)
+  * `OPENROUTER_API_KEY` (OpenRouter)
+  * `ANTHROPIC_API_KEY` (Anthropic Claude)
+  * `LLM_API_KEY` + `LLM_BASE_URL` (Generic OpenAI endpoint, Ollama, vLLM, Groq, DeepSeek)
+
+---
+
+### `scripts/examples/telegram_bot_sample.py` (~90 LOC)
+**Role**: Telegram Bot handler sample script.
+
+- Listens for Job URLs / descriptions in Telegram chat
+- Executes `cli_tailor.py --json` in a background subprocess
+- Uploads Resume & Cover Letter PDF documents directly into Telegram chat
+
+---
+
+### `prompts/` (Prompt Templates)
+**Role**: Modular Prompt Library.
+
+- `job_analysis_prompt.md` — Extracting Must-Have / Nice-To-Have requirements
+- `resume_tailoring_prompt.md` — 1-page A4 resume tailoring system prompt
+- `cover_letter_prompt.md` — Technical cover letter prompt
+- `linkedin_outreach_prompt.md` — 2-3 sentence recruiter cold DM prompt
+- `telegram_bot_prompt.md` — Telegram bot agent system prompt & RPC protocol spec
 
 ## Common Utilities
 

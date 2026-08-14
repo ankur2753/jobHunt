@@ -27,6 +27,38 @@ One-time setup before any automation can run.
    → Select portal → Log in manually → Cookies auto-saved
 ```
 
+## Workflow 5: 1-Page A4 Resume & Cover Letter Tailoring ([[RESUME_TAILORING_ENGINE]])
+
+```
+User (Telegram Chat or CLI)
+  → Send Job URL or Job Description Text
+        ↓
+  scripts/cli_tailor.py --url "<URL>" --json (or --jd-text)
+        ↓
+  1. Playwright Scraping: DOM innerText extraction (domcontentloaded + 3s render delay)
+        ↓
+  2. Provider-Agnostic LLM Query (llm_fallback.py):
+     - Checks GEMINI_API_KEY -> OPENAI_API_KEY -> OPENROUTER_API_KEY -> LLM_API_KEY
+     - Extracts Must Have / Nice To Have skills
+     - Tailors master resume bullets (Senior QA Engineer + GET + Deloitte + 2 Projects)
+     - Formats 1-page A4 executive HTML
+        ↓
+  3. Playwright PDF Engine:
+     - Applies A4 page budget CSS (9.5pt font, 1.42 line height, 14px section margin)
+     - Renders Ankur_Kumar_[Company]_Resume.pdf (~92% page height)
+     - Renders Ankur_Kumar_[Company]_Cover_Letter.pdf
+        ↓
+  4. Returns JSON Schema Output:
+     - status: "success"
+     - resume_pdf: path to Resume PDF
+     - cover_letter_pdf: path to Cover Letter PDF
+     - linkedin_dm: recruiter outreach message text
+        ↓
+  5. Telegram Bot Handler (telegram_bot_sample.py):
+     - Uploads Resume & Cover Letter PDF documents into Telegram chat
+     - Sends LinkedIn DM message
+```
+
 ---
 
 ## Workflow 2: Naukri Auto-Apply (Primary Flow)

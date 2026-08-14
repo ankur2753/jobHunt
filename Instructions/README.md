@@ -50,6 +50,18 @@ The main objective is to automate the entire job search workflow:
 * **Application Submission:** Apply for jobs on different portals.
 * **Networking:** Automate cold outreach and referral requests.
 
+## Obsidian Knowledge Graph Navigation
+
+- **[[PROJECT_MAP]]** — Central Knowledge Graph Index
+- **[[RESUME_TAILORING_ENGINE]]** — 1-Page A4 Resume & Cover Letter Engine, Provider-Agnostic LLM & Telegram Bot Integration
+- **[[ARCHITECTURE]]** — Three-Layer System Design & Failure Escalation
+- **[[COMPONENTS]]** — Master Script & Module Inventory
+- **[[WORKFLOWS]]** — Step-by-Step Execution Flows
+- **[[REQUIREMENTS]]** — Setup, Dependencies & Environment Config
+- **[[KNOWN_BUGS]]** — Bug Tracker & Roadmap
+
+---
+
 ## Folder Structure
 
 * `config/`: Contains configuration files, such as `requirements.txt`.

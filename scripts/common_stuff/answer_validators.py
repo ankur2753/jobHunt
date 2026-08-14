@@ -24,8 +24,74 @@ class FieldCategory(Enum):
     BOOLEAN = "boolean"
 
 
+def map_country_to_dial_code(country_name: str) -> str:
+    """Map country names/strings to standard phone dial codes (e.g. India -> +91, USA -> +1)."""
+    if not country_name:
+        return "+91"
+    c_lower = country_name.strip().lower()
+    
+    country_map = {
+        "india": "+91",
+        "united states": "+1",
+        "us": "+1",
+        "usa": "+1",
+        "united kingdom": "+44",
+        "uk": "+44",
+        "canada": "+1",
+        "australia": "+61",
+        "germany": "+49",
+        "singapore": "+65",
+        "united arab emirates": "+971",
+        "uae": "+971",
+    }
+    
+    for key, code in country_map.items():
+        if key in c_lower:
+            return code
+    
+    # If already formatted as dial code (+ digits), return as-is
+    if country_name.strip().startswith('+'):
+        return country_name.strip()
+        
+    return "+91"
+
+
+def sanitize_numeric_answer(val: str, field_name: str) -> str:
+    """Extract raw digits/integers for numeric fields (Phone, Year, CTC, Notice Period)."""
+    if not val:
+        return ""
+    val_str = str(val).strip()
+    field_lower = field_name.lower()
+    
+    if "country" in field_lower or "dial" in field_lower or "prefix" in field_lower:
+        return map_country_to_dial_code(val_str)
+
+    if "phone" in field_lower or "mobile" in field_lower or "contact" in field_lower:
+        digits = re.sub(r'\D', '', val_str)
+        return digits[-10:] if len(digits) >= 10 else digits
+    if "year" in field_lower or "passing" in field_lower or "graduation" in field_lower or "batch" in field_lower:
+        m = re.search(r'\b(19\d\d|20\d\d)\b', val_str)
+        return m.group(1) if m else "2023"
+    if "ctc" in field_lower or "salary" in field_lower or "package" in field_lower or "compensation" in field_lower:
+        m = re.search(r'(\d+)', val_str)
+        if m:
+            num = int(m.group(1))
+            return str(num * 100000) if num < 100 else str(num)
+    if "notice" in field_lower or "days" in field_lower or "joining" in field_lower or "available" in field_lower:
+        m = re.search(r'(\d+)', val_str)
+        return m.group(1) if m else "30"
+    
+    m = re.search(r'(\d+)', val_str)
+    return m.group(1) if m else val_str
+
+
 class AnswerNormalizer:
     """Normalize answers based on expected format and field category."""
+    
+    @staticmethod
+    def sanitize_numeric(val: str, field_name: str) -> str:
+        return sanitize_numeric_answer(val, field_name)
+
     
     # Salary-related keywords and patterns
     SALARY_KEYWORDS = ['salary', 'ctc', 'lpa', 'lakhs', 'salary package', 'compensation', 'pay', 'wage']
@@ -411,7 +477,7 @@ class AnswerNormalizer:
             FieldCategory.EXPERIENCE: AnswerNormalizer.normalize_experience,
             FieldCategory.NOTICE_PERIOD: AnswerNormalizer.normalize_notice_period,
             FieldCategory.AVAILABILITY: AnswerNormalizer.normalize_availability,
-            FieldCategory.CONTACT: AnswerNormalizer.normalize_email,  # Try email first
+            FieldCategory.CONTACT: lambda x: AnswerNormalizer.normalize_email(x) or AnswerNormalizer.normalize_phone(x),
             FieldCategory.DATE: AnswerNormalizer.normalize_date,
             FieldCategory.TEXT: lambda x: x.strip() if x else None,
             FieldCategory.NUMBER: lambda x: re.search(r'\d+', x).group(0) if x and re.search(r'\d+', x) else None,

@@ -28,6 +28,36 @@ class AnswerCandidate:
 
 
 class VectorDBManager:
+    CANONICAL_BASIC_FIELDS = {
+        r'\bfirst\s*name|firstname\b': ('Ankur', 'first_name'),
+        r'\blast\s*name|lastname\b': ('Kumar', 'last_name'),
+        r'\bfull\s*name|fullname\b': ('Ankur Kumar', 'full_name'),
+        r'\bfather\'?s?\s*name|fathername\b': ('Sunil Kumar', 'father_name'),
+        r'\bmother\'?s?\s*name|mothername\b': ('Sarita Devi', 'mother_name'),
+        r'\b(email|e-mail|email\s*address)\b': ('ankur2753.ak@gmail.com', 'email'),
+        r'\b(phone|mobile|contact|phone\s*number|mobile\s*number|phonenumber|mobilenumber)\b': ('8002656334', 'phone'),
+        r'\b(city|district|town|cityname)\b': ('Bengaluru', 'city'),
+        r'\bstate|statename\b': ('Karnataka', 'state'),
+        r'\b(pin\s*code|pincode|zip|zip\s*code)\b': ('560103', 'pincode'),
+        r'\b(house\s*no|house\s*number|flat\s*no|flat\s*number|housenumber)\b': ('#102', 'house_number'),
+        r'\b(street|street\s*name|area|area\s*name|streetname|areaname)\b': ('Outer Ring Road', 'street_name'),
+        r'\bgender\b': ('Male', 'gender'),
+        r'\bcountry|countryname\b': ('India', 'country'),
+        r'\b(institution|college|university|school|institute|institution\s*name|institutionname)\b': ('Sapthagiri College Of Engineering', 'institution_name'),
+        r'\b(last\s*company|previous\s*company|previous\s*employer|last\s*firm|last\s*company\s*name|lastcompanyname)\b': ('SafeSend Technologies', 'last_company'),
+        r'\b(job\s*profile|designation|current\s*role|position|job\s*title|jobprofile)\b': ('Senior QA Engineer', 'job_profile'),
+        r'\b(expected\s*annual\s*ctc|expected\s*ctc|expected\s*salary|ectc|expectedctc|expectedannualctc)\b': ('1500000', 'expected_ctc'),
+        r'\b(current\s*ctc|current\s*salary|cctc|currentctc)\b': ('1200000', 'current_ctc'),
+        r'\b(passing\s*year|year\s*of\s*passing|graduation\s*year|passingyear)\b': ('2023', 'passing_year'),
+        r'\b(notice\s*period|notice\s*days|noticeperiod)\b': ('30', 'notice_period'),
+        r'\b(skills|core\s*skills|technical\s*skills)\b': ('Python, JavaScript, React, SQL, C#, ASP.NET', 'skills'),
+        r'\b(work\s*experience|year\s*of\s*experience|years\s*of\s*experience|total\s*experience|work-experience)\b': ('2-3', 'work_experience'),
+        r'\b(do\s*you\s*have\s*(?:prior\s*)?experience|have\s*experience|choice)\b': ('Yes', 'has_experience'),
+        r'\b(how\s*did\s*you\s*find\s*about\s*us|choose\s*any\s*one|how\s*find\s*us|how-find-us)\b': ('Job Portals', 'find_us'),
+        r'\b(application\s*source|source\s*of\s*application|source-of-application)\b': ('Direct Walk-in', 'app_source'),
+        r'\b(education\s*qualification|qualification|educationqualification)\b': ('B-Tech', 'education_qualification')
+    }
+
     KNOWN_ALIASES = {
         'expected ctc': 'salary_expected',
         'expected salary': 'salary_expected',
@@ -155,8 +185,12 @@ class VectorDBManager:
         if not json_path.exists():
             raise FileNotFoundError(f"Personal details file not found: {json_path}")
 
-        with open(json_path, 'r', encoding='utf-8') as f:
-            personal_details = json.load(f)
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                personal_details = json.load(f)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load personal details from {json_path}: {e}")
+            personal_details = {}
 
         documents, metadatas, ids = self._flatten_data(personal_details, 'personal_details')
         self._upsert_documents(documents, metadatas, ids)
@@ -228,13 +262,26 @@ class VectorDBManager:
 
     def evaluate_canonical_question(self, question: str) -> Optional[AnswerCandidate]:
         """
-        Deterministically answer canonical questions (e.g. previous employment checks)
+        Deterministically answer canonical questions (demographics, contact info, employment checks)
         using structured user profile facts before resorting to vector similarity.
         """
         if not question:
             return None
             
         q_lower = question.strip().lower()
+        q_cleaned = re.sub(r'[\*\:\?]', '', q_lower).strip()
+
+        # Check canonical basic fields (demographics & contact info)
+        for pattern, (val, key_name) in self.CANONICAL_BASIC_FIELDS.items():
+            if re.search(pattern, q_cleaned):
+                return AnswerCandidate(
+                    answer_text=val,
+                    confidence=1.0,
+                    source_key=key_name,
+                    source_category="canonical_demographics",
+                    should_autofill=True,
+                    reasoning=f"Canonical demographic rule match for '{pattern}'"
+                )
         
         # Patterns for company employment history checks
         patterns = [

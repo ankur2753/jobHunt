@@ -15,22 +15,45 @@ try:
 except ImportError:
     pass
 
+
 def get_api_key_and_provider():
     """
-    Checks environment variables for available LLM API keys.
+    Checks environment variables for available LLM API keys in flexible priority order.
     Returns: Tuple of (api_key, provider, api_url, model) or (None, None, None, None)
     """
-    # 1. Gemini
+    # 1. Custom / Generic OpenAI-compatible endpoint (Ollama, LMStudio, DeepSeek, Groq, etc.)
+    generic_key = os.environ.get("LLM_API_KEY")
+    generic_url = os.environ.get("LLM_BASE_URL")
+    if generic_key or generic_url:
+        return (
+            generic_key or "dummy-key",
+            "openai_compatible",
+            generic_url or "https://api.openai.com/v1/chat/completions",
+            os.environ.get("LLM_MODEL", "gpt-4o-mini")
+        )
+
+    # 2. Gemini API
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
+        model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         return (
             gemini_key, 
             "gemini", 
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", 
-            "gemini-2.5-flash"
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", 
+            model
         )
-    
-    # 2. OpenRouter
+
+    # 3. OpenAI API
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key:
+        return (
+            openai_key, 
+            "openai", 
+            "https://api.openai.com/v1/chat/completions", 
+            os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        )
+
+    # 4. OpenRouter API
     openrouter_key = os.environ.get("OPENROUTER_API_KEY")
     if openrouter_key:
         return (
@@ -39,36 +62,27 @@ def get_api_key_and_provider():
             "https://openrouter.ai/api/v1/chat/completions", 
             os.environ.get("OPENROUTER_MODEL", "openrouter/auto")
         )
-    
-    # 3. OpenAI
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key:
-        return (
-            openai_key, 
-            "openai", 
-            "https://api.openai.com/v1/chat/completions", 
-            "gpt-4o-mini"
-        )
-        
-    # 4. Anthropic
+
+    # 5. Anthropic Claude API
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
     if anthropic_key:
         return (
             anthropic_key, 
             "anthropic", 
             "https://api.anthropic.com/v1/messages", 
-            "claude-3-5-haiku-20241022"
+            os.environ.get("ANTHROPIC_MODEL", "claude-3-5-haiku-20241022")
         )
-        
+
     return None, None, None, None
+
 
 async def query_llm_fallback(question: str, options: List[str] = None, profile_context: str = "") -> Optional[str]:
     """
-    Queries an LLM to answer a job application question based on the user's profile context.
+    Queries any configured LLM provider to process prompts and format responses.
     """
     api_key, provider, api_url, model = get_api_key_and_provider()
     if not api_key:
-        logger.warning("⚠️ LLM Fallback: No API key found in environment (GEMINI_API_KEY, OPENROUTER_API_KEY, etc.)")
+        logger.warning("⚠️ LLM Fallback: No API key found in environment (GEMINI_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, etc.)")
         return None
         
     logger.info(f"🤖 Querying LLM fallback using {provider} ({model})...")
@@ -84,32 +98,27 @@ async def query_llm_fallback(question: str, options: List[str] = None, profile_c
     except Exception as e:
         logger.error(f"Error loading personal_details.json: {e}")
 
-    # Build the profile context combining the full JSON details and vector DB facts
     full_context = ""
     if json_details:
         full_context += f"--- STRUCTURED RESUME/PROFILE JSON ---\n{json_details}\n\n"
     if profile_context:
-        full_context += f"--- SUPPLEMENTARY PROFILE FACTS (Vector DB) ---\n{profile_context}\n"
+        full_context += f"--- SUPPLEMENTARY PROFILE FACTS ---\n{profile_context}\n"
 
-    prompt = f"""You are an AI job application assistant. Your task is to answer a form question on a job application page on behalf of the user.
-Use the user's profile details below as your single source of truth.
-
+    prompt = f"""You are an AI career and resume assistant.
 {full_context}
 ---------------------------
 
-Question to answer:
+Request:
 "{question}"
 """
 
     if options:
-        prompt += f"\n[Field Type: Multiple-Choice/Radio/Dropdown]\nYou MUST select one of the following exact options:\n"
+        prompt += f"\n[Field Type: Multiple-Choice]\nSelect one of the following exact options:\n"
         for opt in options:
             prompt += f"- {opt}\n"
         prompt += f"\nYour response must match one of the options above exactly."
     else:
-        prompt += f"\n[Field Type: Free-Text Input Box]\nProvide a concise, direct text answer based on the profile details above. Return ONLY the answer value itself.\n"
-
-    prompt += "\nResponse Guidelines:\n1. Return ONLY the final answer value (no conversational filler, no explanations, no formatting like bold/italics).\n2. If it is a multiple-choice question, your response must match one of the options exactly."
+        prompt += f"\nProvide a direct, high-quality answer. Return ONLY the final output.\n"
 
     try:
         if provider == "gemini":
@@ -117,32 +126,32 @@ Question to answer:
             headers = {"Content-Type": "application/json"}
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1}
+                "generationConfig": {"temperature": 0.2}
             }
-            response = requests.post(url, headers=headers, json=payload, timeout=15)
+            response = requests.post(url, headers=headers, json=payload, timeout=20)
             response.raise_for_status()
             res_data = response.json()
             answer = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            
-        elif provider in ("openai", "openrouter"):
+
+        elif provider in ("openai", "openrouter", "openai_compatible"):
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
             }
             if provider == "openrouter":
                 headers["HTTP-Referer"] = os.getenv("GITHUB_REPO_URL", "https://github.com/job-hunt-agent")
-                headers["X-Title"] = "Job Hunt Agent"
+                headers["X-Title"] = "Resume Tailor Agent"
                 
             payload = {
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1
+                "temperature": 0.2
             }
-            response = requests.post(api_url, headers=headers, json=payload, timeout=15)
+            response = requests.post(api_url, headers=headers, json=payload, timeout=20)
             response.raise_for_status()
             res_data = response.json()
             answer = res_data["choices"][0]["message"]["content"].strip()
-            
+
         elif provider == "anthropic":
             headers = {
                 "x-api-key": api_key,
@@ -151,24 +160,24 @@ Question to answer:
             }
             payload = {
                 "model": model,
-                "max_tokens": 100,
+                "max_tokens": 1500,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1
+                "temperature": 0.2
             }
-            response = requests.post(api_url, headers=headers, json=payload, timeout=15)
+            response = requests.post(api_url, headers=headers, json=payload, timeout=20)
             response.raise_for_status()
             res_data = response.json()
             answer = res_data["content"][0]["text"].strip()
-            
-        # Clean quotes if model wrapped response in quotes
+
+        # Clean wrapping quotes if present
         if answer.startswith('"') and answer.endswith('"'):
             answer = answer[1:-1].strip()
         if answer.startswith("'") and answer.endswith("'"):
             answer = answer[1:-1].strip()
-            
-        logger.info(f"🤖 LLM Fallback Answer: '{answer}'")
+
+        logger.info(f"🤖 LLM Answer received successfully ({len(answer)} chars)")
         return answer
-        
+
     except Exception as e:
-        logger.error(f"❌ LLM Fallback API call failed: {e}")
+        logger.error(f"❌ LLM API call failed ({provider}): {e}")
         return None

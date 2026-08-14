@@ -1,4 +1,5 @@
 
+import pytest
 import asyncio
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.orchestrator.orchestrator import LinkedInPlaywright
 
+@pytest.mark.e2e
 class TestLinkedInLogin(unittest.TestCase):
 
     def test_linkedin_login_with_cookies(self):

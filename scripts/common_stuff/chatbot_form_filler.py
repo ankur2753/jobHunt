@@ -18,6 +18,8 @@ from datetime import datetime
 
 from playwright.async_api import Page
 from .vector_db_manager import VectorDBManager, AnswerCandidate
+from .answer_validators import sanitize_numeric_answer
+from .retry_utils import dismiss_overlays_and_popups
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,7 @@ class FormQuestion:
     visible_label: Optional[str] = None
     field_name: Optional[str] = None
     field_id: Optional[str] = None
+    target_frame: Any = None
     
     def __str__(self):
         return self.question_text or f"Field: {self.field_name or self.field_id}"
@@ -173,6 +176,12 @@ class ChatbotFormFiller:
             ChatbotFormFillerStats with results for each question
         """
         try:
+            # Step 0: Dismiss overlay popups & cookie banners before scanning form fields
+            try:
+                await dismiss_overlays_and_popups(self.page)
+            except Exception as e:
+                logger.debug(f"Dismiss overlays note: {e}")
+
             # Step 1: Detect all questions on the page
             logger.info("Detecting form questions...")
             questions = await self._detect_form_questions()
@@ -242,106 +251,150 @@ class ChatbotFormFiller:
         questions = []
         
         try:
-            # Strategy A: Find fields with associated labels (HTML best practice)
-            # Look for label -> input patterns
-            await self.page.wait_for_selector("label, input, select, textarea", timeout=5000)
+            frames = self.page.frames if hasattr(self.page, "frames") and self.page.frames else [self.page]
             
-            # Find all labels and their associated fields
-            labels = await self.page.query_selector_all("label")
-            
-            for label in labels:
+            for target in frames:
                 try:
-                    label_text = await label.text_content()
-                    if not label_text or len(label_text.strip()) < 3:
-                        continue
+                    # Strategy A: Find fields with associated labels (HTML best practice)
+                    labels = await target.query_selector_all("label")
                     
-                    label_text = label_text.strip()
-                    
-                    # Try to find associated field
-                    # Method 1: for attribute pointing to input id
-                    for_attr = await label.get_attribute("for")
-                    if for_attr:
-                        # Use attribute selector to avoid errors with spaces/special chars in ID
-                        field = await self.page.query_selector(f'[id="{for_attr}"]')
-                        if field:
-                            question = await self._extract_question_from_field(field, label_text)
-                            if question:
-                                questions.append(question)
+                    for label in labels:
+                        try:
+                            label_text = await label.text_content()
+                            if not label_text or len(label_text.strip()) < 3:
                                 continue
-                    
-                    # Method 2: Field is child of label
-                    field = await label.query_selector("input, select, textarea")
-                    if field:
-                        question = await self._extract_question_from_field(field, label_text)
-                        if question:
-                            questions.append(question)
-                            continue
-                
-                except Exception as e:
-                    logger.debug(f"Error processing label: {e}")
-                    continue
-            
-            # Strategy B: Find fields with placeholders (no associated labels)
-            inputs_with_placeholder = await self.page.query_selector_all(
-                "input[placeholder], textarea[placeholder]"
-            )
-            
-            for field in inputs_with_placeholder:
-                try:
-                    placeholder = await field.get_attribute("placeholder")
-                    if placeholder and len(placeholder.strip()) >= 3:
-                        question = await self._extract_question_from_field(field, placeholder)
-                        if question and question not in questions:
-                            questions.append(question)
-                except Exception as e:
-                    logger.debug(f"Error processing field with placeholder: {e}")
-                    continue
-            
-            # Strategy C: Find fields with aria-labels (accessibility)
-            inputs_with_aria = await self.page.query_selector_all(
-                "input[aria-label], select[aria-label], textarea[aria-label]"
-            )
-            
-            for field in inputs_with_aria:
-                try:
-                    aria_label = await field.get_attribute("aria-label")
-                    if aria_label and len(aria_label.strip()) >= 3:
-                        question = await self._extract_question_from_field(field, aria_label)
-                        if question and question not in questions:
-                            questions.append(question)
-                except Exception as e:
-                    logger.debug(f"Error processing field with aria-label: {e}")
-                    continue
-
-            # Strategy D: Conversational UI / Chatbot Bubbles (Naukri style)
-            bot_messages = await self.page.query_selector_all(".botItem .botMsg span, .chatbot_ListItem .botMsg span")
-            if bot_messages:
-                try:
-                    # Find the last visible bot message which usually contains the active question
-                    last_msg_text = None
-                    for msg in reversed(bot_messages):
-                        if await msg.is_visible():
-                            last_msg_text = await msg.text_content()
-                            break
-                    
-                    if last_msg_text and len(last_msg_text.strip()) >= 3:
-                        # Find the active input field
-                        active_fields = await self.page.query_selector_all("input:not([type='hidden']), textarea, select")
-                        for field in active_fields:
-                            if await field.is_visible():
-                                question = await self._extract_question_from_field(field, last_msg_text.strip())
-                                if question:
-                                    # Override if field was already detected by a generic placeholder
-                                    existing = next((q for q in questions if q.field_selector == question.field_selector), None)
-                                    if existing:
-                                        existing.question_text = last_msg_text.strip()
-                                    else:
+                            
+                            label_text = label_text.strip()
+                            
+                            # Method 1: for attribute pointing to input id
+                            for_attr = await label.get_attribute("for")
+                            if for_attr:
+                                field = await target.query_selector(f'[id="{for_attr}"]')
+                                if field:
+                                    question = await self._extract_question_from_field(field, label_text, target_frame=target)
+                                    if question:
                                         questions.append(question)
-                                break
-                except Exception as e:
-                    logger.debug(f"Error processing bot messages: {e}")
+                                        continue
+                            
+                            # Method 2: Field is child of label
+                            field = await label.query_selector("input, select, textarea")
+                            if field:
+                                question = await self._extract_question_from_field(field, label_text, target_frame=target)
+                                if question:
+                                    questions.append(question)
+                                    continue
+                        
+                        except Exception as e:
+                            logger.debug(f"Error processing label: {e}")
+                            continue
+                    
+                    # Strategy B: Find fields with placeholders (no associated labels)
+                    inputs_with_placeholder = await target.query_selector_all(
+                        "input[placeholder], textarea[placeholder]"
+                    )
+                    
+                    for field in inputs_with_placeholder:
+                        try:
+                            placeholder = await field.get_attribute("placeholder")
+                            if placeholder and len(placeholder.strip()) >= 3:
+                                question = await self._extract_question_from_field(field, placeholder, target_frame=target)
+                                if question and question not in questions:
+                                    questions.append(question)
+                        except Exception as e:
+                            logger.debug(f"Error processing field with placeholder: {e}")
+                            continue
+                    
+                    # Strategy C: Find fields with aria-labels (accessibility)
+                    inputs_with_aria = await target.query_selector_all(
+                        "input[aria-label], select[aria-label], textarea[aria-label]"
+                    )
+                    
+                    for field in inputs_with_aria:
+                        try:
+                            aria_label = await field.get_attribute("aria-label")
+                            if aria_label and len(aria_label.strip()) >= 3:
+                                question = await self._extract_question_from_field(field, aria_label, target_frame=target)
+                                if question and question not in questions:
+                                    questions.append(question)
+                        except Exception as e:
+                            logger.debug(f"Error processing field with aria-label: {e}")
+                            continue
+
+                    # Strategy D: Conversational UI / Chatbot Bubbles (Naukri style)
+                    bot_messages = await target.query_selector_all(".botItem .botMsg span, .chatbot_ListItem .botMsg span")
+                    if bot_messages:
+                        try:
+                            last_msg_text = None
+                            for msg in reversed(bot_messages):
+                                if await msg.is_visible():
+                                    last_msg_text = await msg.text_content()
+                                    break
+                            
+                            if last_msg_text and len(last_msg_text.strip()) >= 3:
+                                active_fields = await target.query_selector_all("input:not([type='hidden']), textarea, select")
+                                for field in active_fields:
+                                    if await field.is_visible():
+                                        question = await self._extract_question_from_field(field, last_msg_text.strip(), target_frame=target)
+                                        if question:
+                                            existing = next((q for q in questions if q.field_selector == question.field_selector), None)
+                                            if existing:
+                                                existing.question_text = last_msg_text.strip()
+                                            else:
+                                                questions.append(question)
+                                        break
+                        except Exception as e:
+                            logger.debug(f"Error processing bot messages: {e}")
+
+                    # Strategy E: Fallback scan for remaining visible form input, select, textarea elements
+                    all_fields = await target.query_selector_all("input:not([type='hidden']), select, textarea")
+                    for field in all_fields:
+                        try:
+                            if not await field.is_visible():
+                                continue
+                            
+                            input_type = await field.get_attribute("type")
+                            if input_type in ['submit', 'button', 'reset', 'file']:
+                                continue
+                                
+                            field_id = await field.get_attribute("id") or ""
+                            field_name = await field.get_attribute("name") or ""
+                            
+                            already_covered = any(
+                                (q.field_name and q.field_name == field_name) or 
+                                (q.field_id and q.field_id == field_id) or
+                                q.field_selector in [field_id, field_name, f"#{field_id}", f"[name='{field_name}']"]
+                                for q in questions
+                            )
+                            if already_covered:
+                                continue
+
+                            label_text = None
+                            parent = await field.evaluate_handle("el => el.closest('.form-group, .field, div, p, tr')")
+                            if parent:
+                                parent_text = await parent.evaluate("el => el.innerText || el.textContent")
+                                if parent_text:
+                                    lines = [l.strip() for l in parent_text.split('\n') if l.strip()]
+                                    if lines:
+                                        label_text = lines[0]
+                            
+                            if not label_text or len(label_text) > 100:
+                                raw_identifier = field_name or field_id
+                                if raw_identifier:
+                                    import re
+                                    label_text = re.sub(r'([a-z])([A-Z])', r'\1 \2', raw_identifier).replace('_', ' ').title()
+
+                            if label_text and len(label_text.strip()) >= 2:
+                                question = await self._extract_question_from_field(field, label_text.strip(), target_frame=target)
+                                if question:
+                                    questions.append(question)
+                        except Exception as e:
+                            logger.debug(f"Error in Strategy E fallback field scanning: {e}")
+                            continue
+
+                except Exception as frame_err:
+                    logger.debug(f"Error processing frame {target}: {frame_err}")
             
-            logger.info(f"Detected {len(questions)} form questions")
+            logger.info(f"Detected {len(questions)} form questions across frames")
             return questions
             
         except Exception as e:
@@ -351,7 +404,8 @@ class ChatbotFormFiller:
     async def _extract_question_from_field(
         self,
         field,
-        question_text: str
+        question_text: str,
+        target_frame: Any = None
     ) -> Optional[FormQuestion]:
         """
         Extract question details from a form field.
@@ -359,11 +413,17 @@ class ChatbotFormFiller:
         Args:
             field: Playwright element handle
             question_text: Question text (from label, placeholder, or aria-label)
+            target_frame: Frame where field resides
         
         Returns:
             FormQuestion or None if invalid
         """
         try:
+            # Enforce Visibility Check to Skip Hidden Form Fields & Popups
+            if not await field.is_visible():
+                logger.debug(f"Skipping non-visible field: {question_text}")
+                return None
+
             # Get field selector
             field_selector = await field.evaluate("el => el.getAttribute('id') || el.getAttribute('name') || el.getAttribute('name')")
             
@@ -390,7 +450,8 @@ class ChatbotFormFiller:
                 placeholder=placeholder,
                 aria_label=aria_label,
                 field_name=field_name,
-                field_id=field_id
+                field_id=field_id,
+                target_frame=target_frame
             )
             
         except Exception as e:
@@ -449,43 +510,97 @@ class ChatbotFormFiller:
                 confidence_threshold=confidence_threshold
             )
             
-            if not candidate:
-                # Try with lower threshold to get candidates
-                candidates = self.vector_db.answer_question_with_candidates(
-                    question.question_text,
-                    n_candidates=3,
-                    confidence_threshold=0.5
+            answer_text = None
+            confidence = 0.0
+            
+            if candidate:
+                answer_text = candidate.answer_text
+                confidence = candidate.confidence
+            else:
+                logger.info(f"🤖 Vector DB failed to confidently answer '{question.question_text}'. Falling back to agy LLM...")
+                try:
+                    import asyncio
+                    import subprocess
+                    import json
+                    from pathlib import Path
+                    
+                    details_str = "{}"
+                    details_path = Path("/home/ankurkumar/ankur_code/agent/personal_details/personal_details.json")
+                    if details_path.exists():
+                        with open(details_path, "r", encoding="utf-8") as f:
+                            details_str = f.read()
+
+                    is_cover_letter = "cover letter" in question.question_text.lower()
+                    
+                    if is_cover_letter:
+                        prompt = (
+                            f"You are an expert job application assistant. "
+                            f"Here are my personal details:\n{details_str}\n\n"
+                            f"The application asks for a '{question.question_text}'. "
+                            f"Please write a highly professional, engaging, and tailored cover letter in raw text format. "
+                            f"Do not include markdown or generic placeholders. Just the final text."
+                        )
+                    else:
+                        prompt = (
+                            f"You are an expert job application assistant. "
+                            f"Here are my personal details:\n{details_str}\n\n"
+                            f"Answer the following job application question concisely: '{question.question_text}'. "
+                            f"Provide ONLY the answer text, no explanations, no markdown, just the raw string to fill in the form."
+                        )
+                    
+                    result = await asyncio.to_thread(
+                        subprocess.run,
+                        ["agy", "--dangerously-skip-permissions", "--print", prompt],
+                        cwd="/home/ankurkumar/ankur_code/agent",
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    
+                    if result.returncode == 0 and result.stdout.strip():
+                        # Extract the actual answer, ignoring potential agy login logs in stdout
+                        lines = [line.strip() for line in result.stdout.strip().split('\n') if line.strip()]
+                        raw_ans = lines[-1] if lines else ""
+                        
+                        if raw_ans.startswith('"') and raw_ans.endswith('"'):
+                            raw_ans = raw_ans[1:-1]
+                        
+                        answer_text = raw_ans
+                        confidence = 1.0  # Trust LLM answer
+                        logger.info(f"🤖 LLM Answer received: {answer_text}")
+                        
+                        # Update vector DB with new answer
+                        self.vector_db.store_answered_question(
+                            question.question_text, 
+                            answer_text, 
+                            category="learned_answers", 
+                            tags=["agy_fallback"]
+                        )
+                        logger.info("🤖 Saved new answer to Vector DB for future use.")
+                    else:
+                        logger.warning(f"🤖 LLM Fallback failed. Output: {result.stderr}")
+                except Exception as e:
+                    logger.error(f"🤖 Error querying agy LLM: {e}")
+
+            if not answer_text:
+                return FormFillingResult(
+                    question=question.question_text,
+                    status="skipped",
+                    confidence=0.0
                 )
-                
-                if candidates:
-                    # Found candidates with low confidence - flag for manual review
-                    logger.debug(f"Low confidence candidates for '{question.question_text}': "
-                               f"{[c.confidence for c in candidates]}")
-                    return FormFillingResult(
-                        question=question.question_text,
-                        answer=candidates[0].answer_text,
-                        status="manual_required",
-                        confidence=candidates[0].confidence
-                    )
-                else:
-                    # No candidates at all
-                    return FormFillingResult(
-                        question=question.question_text,
-                        status="skipped",
-                        confidence=0.0
-                    )
             
             # Step 2: Validate and normalize answer
             validated_answer = self._validate_and_normalize_answer(
-                candidate.answer_text,
-                question.field_type
+                answer_text,
+                question.field_type,
+                question_text=question.question_text
             )
             
             if not validated_answer:
                 return FormFillingResult(
                     question=question.question_text,
                     status="skipped",
-                    confidence=candidate.confidence,
+                    confidence=confidence,
                     error_message="Answer validation failed"
                 )
             
@@ -497,7 +612,7 @@ class ChatbotFormFiller:
                         question=question.question_text,
                         answer=validated_answer,
                         status="failed",
-                        confidence=candidate.confidence,
+                        confidence=confidence,
                         error_message="Failed to fill form field"
                     )
             
@@ -505,7 +620,7 @@ class ChatbotFormFiller:
                 question=question.question_text,
                 answer=validated_answer,
                 status="filled",
-                confidence=candidate.confidence
+                confidence=confidence
             )
             
         except Exception as e:
@@ -519,14 +634,16 @@ class ChatbotFormFiller:
     def _validate_and_normalize_answer(
         self,
         answer: str,
-        field_type: FieldType
+        field_type: FieldType,
+        question_text: str = ""
     ) -> Optional[str]:
         """
-        Validate and normalize answer based on field type.
+        Validate and normalize answer based on field type and question text context.
         
         Args:
             answer: Raw answer from vector DB
             field_type: Expected field type
+            question_text: Question label or input description
         
         Returns:
             Normalized answer or None if validation fails
@@ -535,6 +652,14 @@ class ChatbotFormFiller:
             return None
         
         answer = answer.strip()
+        q_lower = (question_text or "").lower()
+
+        # Check if field requires numeric sanitization (Phone, Year, CTC, Notice Period, etc.)
+        numeric_keywords = ['phone', 'mobile', 'contact', 'year', 'passing', 'graduation', 'batch', 'ctc', 'salary', 'package', 'notice', 'days']
+        if field_type == FieldType.NUMBER_INPUT or any(k in q_lower for k in numeric_keywords):
+            sanitized = sanitize_numeric_answer(answer, question_text)
+            if sanitized:
+                return sanitized
         
         # Type-specific validation
         if field_type == FieldType.EMAIL_INPUT:
@@ -546,7 +671,6 @@ class ChatbotFormFiller:
                 return None
         
         elif field_type == FieldType.NUMBER_INPUT:
-            # Extract number
             import re
             match = re.search(r'\d+(?:\.\d+)?', answer)
             if match:
@@ -556,7 +680,6 @@ class ChatbotFormFiller:
                 return None
         
         elif field_type == FieldType.DATE_INPUT:
-            # Expect YYYY-MM-DD format
             import re
             match = re.search(r'\d{4}-\d{2}-\d{2}', answer)
             if match:
@@ -566,7 +689,6 @@ class ChatbotFormFiller:
                 return None
         
         else:
-            # Text, textarea, select, radio, checkbox - accept as-is
             return answer
 
     async def _fill_form_field(
@@ -618,7 +740,8 @@ class ChatbotFormFiller:
             if not any(c in field_selector for c in ['#', '[', ':', '.', ' ']):
                 field_selector = f"#{field_selector}, [name='{field_selector}']"
                 
-            field = await self.page.query_selector(field_selector)
+            target = question.target_frame or self.page
+            field = await target.query_selector(field_selector)
 
             if not field:
                 logger.error(f"Could not find field: {field_selector}")
@@ -637,21 +760,66 @@ class ChatbotFormFiller:
                 return True
             
             elif question.field_type == FieldType.SELECT:
-                # For select, try to find option by value or text
-                await field.select_option(value=answer)
-                logger.debug(f"Selected option: {answer}")
-                return True
+                # Try selecting by label, value, or option text search
+                try:
+                    await field.select_option(label=answer)
+                    logger.debug(f"Selected option by label: {answer}")
+                    return True
+                except Exception:
+                    try:
+                        await field.select_option(value=answer)
+                        logger.debug(f"Selected option by value: {answer}")
+                        return True
+                    except Exception:
+                        options = await field.query_selector_all("option")
+                        for opt in options:
+                            opt_text = (await opt.text_content() or "").strip()
+                            opt_val = (await opt.get_attribute("value") or "").strip()
+                            if answer.lower() in opt_text.lower() or answer.lower() in opt_val.lower() or opt_text.lower() in answer.lower():
+                                try:
+                                    if opt_val:
+                                        await field.select_option(value=opt_val)
+                                    else:
+                                        await field.select_option(label=opt_text)
+                                    logger.debug(f"Selected matched option: {opt_text}")
+                                    return True
+                                except Exception:
+                                    pass
+                return False
             
             elif question.field_type == FieldType.RADIO:
-                # Find and click the radio matching the answer
+                name_attr = await field.get_attribute("name")
+                if name_attr:
+                    radios = await target.query_selector_all(f'input[type="radio"][name="{name_attr}"]')
+                    for r in radios:
+                        r_val = (await r.get_attribute("value") or "").strip().lower()
+                        r_id = await r.get_attribute("id")
+                        r_label = ""
+                        if r_id:
+                            lbl = await target.query_selector(f'label[for="{r_id}"]')
+                            if lbl:
+                                r_label = (await lbl.text_content() or "").strip().lower()
+                        if not r_label:
+                            p_txt = await r.evaluate("el => el.parentElement ? el.parentElement.textContent : ''")
+                            r_label = (p_txt or "").strip().lower()
+                        
+                        if answer.lower() in r_val or answer.lower() in r_label or r_val in answer.lower() or (r_label and r_label in answer.lower()):
+                            try:
+                                await r.evaluate("el => el.click()")
+                            except Exception:
+                                await r.click(force=True)
+                            logger.debug(f"Clicked matched radio: {answer}")
+                            return True
+                
                 radio_value = await field.get_attribute("value")
-                if radio_value == answer:
-                    await field.click()
+                if radio_value and answer.lower() in radio_value.lower():
+                    try:
+                        await field.evaluate("el => el.click()")
+                    except Exception:
+                        await field.click(force=True)
                     logger.debug(f"Clicked radio: {answer}")
                     return True
-                else:
-                    logger.error(f"Radio value mismatch: {radio_value} != {answer}")
-                    return False
+                return False
             
             elif question.field_type == FieldType.CHECKBOX:
                 # Check/uncheck based on answer

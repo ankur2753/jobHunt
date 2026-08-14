@@ -244,6 +244,19 @@ SCREENING = [
         "Do you have any employment gap?",
         "Is there any break in your career?",
     ]),
+    ("Bengaluru, Karnataka, India", [
+        "Address*",
+        "Address",
+    ]),
+    (USER_LINKEDIN, [
+        "LinkedIn Profile URL:*",
+        "LinkedIn Profile URL:",
+    ]),
+    ("Yes", [
+        "Please confirm you have shared your resume and val",
+        "Can you schedule your daily working hours to overl",
+        "Are you living and working in India?",
+    ]),
 ]
 
 

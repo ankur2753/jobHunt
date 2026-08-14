@@ -68,7 +68,7 @@ class ATSResumeTailor:
             self.master_path.write_text(DEFAULT_MASTER_RESUME, encoding="utf-8")
 
     def _markdown_to_html(self, markdown_text: str) -> str:
-        """Converts Markdown text to HTML string with ATS single-column CSS."""
+        """Converts Markdown text to HTML string with executive ATS single-column CSS."""
         try:
             from markdown_it import MarkdownIt
             md = MarkdownIt()
@@ -83,66 +83,79 @@ class ATSResumeTailor:
 <style>
   @page {{
     size: letter;
-    margin: 0.5in;
+    margin: 0.35in;
+  }}
+  * {{
+    box-sizing: border-box;
   }}
   html, body {{
-    font-family: 'Helvetica', 'Arial', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 9.5pt;
-    line-height: 1.4;
-    color: #111111;
+    line-height: 1.45;
+    color: #0f172a;
     background-color: #ffffff;
     margin: 0;
     padding: 0;
   }}
   body {{
-    padding: 0.5in;
+    padding: 0.25in 0.35in;
   }}
   h1 {{
-    font-size: 16pt;
+    font-size: 20pt;
+    font-weight: 700;
     margin-top: 0;
     margin-bottom: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1.5px solid #222222;
-    padding-bottom: 3px;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 6px;
+    text-align: center;
+    color: #0f172a;
   }}
   h2 {{
-    font-size: 11pt;
-    margin-top: 10px;
-    margin-bottom: 4px;
+    font-size: 10.5pt;
+    font-weight: 700;
+    margin-top: 14px;
+    margin-bottom: 6px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid #cccccc;
-    padding-bottom: 2px;
-    color: #222222;
+    letter-spacing: 0.8px;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 3px;
+    color: #1e293b;
   }}
   h3 {{
-    font-size: 10pt;
+    font-size: 9.8pt;
     margin-top: 8px;
-    margin-bottom: 2px;
-    font-weight: bold;
-    color: #111111;
+    margin-bottom: 3px;
+    font-weight: 700;
+    color: #0f172a;
   }}
   p {{
     margin-top: 2px;
-    margin-bottom: 4px;
+    margin-bottom: 5px;
+    color: #334155;
+    text-align: justify;
   }}
   ul {{
-    margin-top: 2px;
-    margin-bottom: 6px;
+    margin-top: 3px;
+    margin-bottom: 8px;
     padding-left: 18px;
+    color: #334155;
   }}
   li {{
-    margin-bottom: 2px;
+    margin-bottom: 3px;
+    font-size: 9.2pt;
   }}
   strong {{
     font-weight: 600;
+    color: #0f172a;
   }}
   em {{
     font-style: italic;
+    color: #64748b;
   }}
   a {{
-    color: #111111;
+    color: #0284c7;
     text-decoration: none;
   }}
 </style>
