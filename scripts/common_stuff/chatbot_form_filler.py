@@ -548,19 +548,12 @@ class ChatbotFormFiller:
                             f"Provide ONLY the answer text, no explanations, no markdown, just the raw string to fill in the form."
                         )
                     
-                    result = await asyncio.to_thread(
-                        subprocess.run,
-                        ["agy", "--dangerously-skip-permissions", "--print", prompt],
-                        cwd="/home/ankurkumar/ankur_code/agent",
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
+                    from scripts.common_stuff.custom_llm_agent import CustomLLMAgent
+                    agent = CustomLLMAgent()
+                    raw_ans = await agent.ask_text(prompt)
                     
-                    if result.returncode == 0 and result.stdout.strip():
-                        # Extract the actual answer, ignoring potential agy login logs in stdout
-                        lines = [line.strip() for line in result.stdout.strip().split('\n') if line.strip()]
-                        raw_ans = lines[-1] if lines else ""
+                    if raw_ans and raw_ans.strip():
+                        raw_ans = raw_ans.strip()
                         
                         if raw_ans.startswith('"') and raw_ans.endswith('"'):
                             raw_ans = raw_ans[1:-1]
@@ -578,7 +571,7 @@ class ChatbotFormFiller:
                         )
                         logger.info("🤖 Saved new answer to Vector DB for future use.")
                     else:
-                        logger.warning(f"🤖 LLM Fallback failed. Output: {result.stderr}")
+                        logger.warning(f"🤖 LLM Fallback failed. Output was empty or error occurred.")
                 except Exception as e:
                     logger.error(f"🤖 Error querying agy LLM: {e}")
 

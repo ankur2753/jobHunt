@@ -65,7 +65,8 @@ class WorkdayAdapter(BaseATSAdapter):
         self,
         resume_path: str,
         user_profile: Dict[str, Any],
-        review_mode: bool = True
+        review_mode: bool = True,
+        **kwargs: Any
     ) -> bool:
         logger.info("🏢 Starting Workday Application Pipeline...")
 
@@ -77,7 +78,7 @@ class WorkdayAdapter(BaseATSAdapter):
         await self.dismiss_popups()
 
         # Step 1: Click Main Apply Button
-        await self._click_if_exists(self.WORKDAY_SELECTORS['apply_btn'])
+        await self._click_if_exists(self.WORKDAY_SELECTORS['apply_btn'], timeout=15000)
 
         # Step 2: Select Autofill with Resume if available
         if await self._click_if_exists(self.WORKDAY_SELECTORS['autofill_resume_btn']):
@@ -116,7 +117,7 @@ class WorkdayAdapter(BaseATSAdapter):
                 else:
                     logger.info("🚀 Submitting Workday Application...")
                     await submit_btn.click()
-                    await self.page.wait_for_timeout(5000)
+                    await self.verify_submission()
                     logger.info("✅ Workday Application submitted successfully.")
                     return True
 
@@ -128,10 +129,8 @@ class WorkdayAdapter(BaseATSAdapter):
 
             if not next_clicked:
                 logger.info(f"No further Next button detected at step {step}. Finishing Workday workflow.")
-                break
+                raise Exception("Workday workflow finished without reaching the submit button.")
 
             await self.page.wait_for_timeout(2000)
 
-        if review_mode:
-            logger.info("⏸️  Review Mode active for Workday application.")
-        return True
+        raise Exception("Workday application reached max steps without submitting.")

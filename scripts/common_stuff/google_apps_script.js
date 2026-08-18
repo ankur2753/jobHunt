@@ -45,6 +45,33 @@ function doPost(e) {
         .createTextOutput(JSON.stringify({ "status": "success", "sheet": "Resume Logs", "message": "Resume log appended." }))
         .setMimeType(ContentService.MimeType.JSON);
     } 
+    else if (data.log_type === "custom_apply") {
+      // Custom Apply Logs
+      var customSheet = ss.getSheetByName("Custom_Apply_Logs");
+      if (!customSheet) {
+        customSheet = ss.insertSheet("Custom_Apply_Logs");
+      }
+      
+      if (customSheet.getLastRow() === 0) {
+        customSheet.appendRow(["Timestamp", "Job Title", "Company", "Portal", "Status", "Questions Answered", "Failure", "Screenshot"]);
+        customSheet.getRange(1, 1, 1, 8).setFontWeight("bold");
+      }
+      
+      var timestamp = data.timestamp || new Date().toISOString();
+      var jobTitle = data.job_title || "Unknown Job";
+      var company = data.company || data.company_name || "Unknown Company";
+      var portal = data.portal || "Unknown Portal";
+      var status = data.status || "UNKNOWN";
+      var questionsAnswered = data.questions_answered !== undefined ? data.questions_answered : 0;
+      var failure = (status.toLowerCase() === "failed") ? "Yes" : "No";
+      var screenshot = data.screenshot_path || data.screenshot || "N/A";
+      
+      customSheet.appendRow([timestamp, jobTitle, company, portal, status, questionsAnswered, failure, screenshot]);
+      
+      return ContentService
+        .createTextOutput(JSON.stringify({ "status": "success", "sheet": "Custom_Apply_Logs", "message": "Custom application log appended." }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     else {
       // Default: Job Application logs
       var appSheet = ss.getSheetByName("Job Applications");

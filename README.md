@@ -12,13 +12,22 @@ Job URL / JD Text ──► Scraper & LLM Analysis ──► Provider-Agnostic L
 
 ## 🚀 Key Features
 
-* **1-Page A4 Executive Resume Engine**: Renders clean, ATS-compliant, single-page A4 PDFs (`Ankur_Kumar_[Company]_Resume.pdf`) that fill ~92% of page budget without overflow or awkward half-page whitespace.
-* **Provider-Agnostic LLM Core**: Supports Google Gemini (`GEMINI_API_KEY`), OpenAI (`OPENAI_API_KEY`), OpenRouter (`OPENROUTER_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`), or generic OpenAI endpoints (`LLM_API_KEY` + `LLM_BASE_URL`).
-* **Automated Job URL Scraping**: Uses Playwright with `domcontentloaded` fallback navigation to reliably extract job postings across complex enterprise portals (Greenhouse, Workday, Lever, Phenom, LinkedIn).
-* **Controlled Tailoring & Disclosure**: Automatically tracks verified experience, reasonable inferences, under-represented stack items, and role-specific skill additions.
-* **JSON-RPC / CLI Interface**: Single command execution (`scripts/cli_tailor.py`) producing structured JSON for Telegram bots, web apps, and workflow scripts.
-* **Telegram Bot Integration**: Full sample Telegram bot code (`scripts/examples/telegram_bot_sample.py`) enabling instant mobile application generation via Telegram chat.
-* **Modular Prompt Library**: Structured prompt templates in `prompts/` for job parsing, resume tailoring, cover letter drafting, outreach, and Telegram bot agent protocols.
+*   **Telegram-First Orchestration**: The entire application runs natively via a local Redis Gateway (`redis_gateway.py`), allowing you to instantly trigger and monitor job applications, resume tailors, and LLM conversations directly from your Telegram mobile app.
+*   **1-Page A4 Executive Resume Engine**: Renders clean, ATS-compliant, single-page A4 PDFs that fill ~92% of page budget without overflow or awkward half-page whitespace.
+*   **LLM API Function Calling (Visual Fallback Cascade)**: When standard Playwright scripts fail on a complex form, the system triggers `CustomLLMAgent`. This agent takes a screenshot, extracts the DOM interactables, and explicitly uses **Native LLM Tool Calling** (`click`, `type_text`, `scroll`, `ask_user`) to autonomously navigate the page.
+*   **Provider-Agnostic LLM Core**: Supports Google Gemini, OpenAI, OpenRouter, Anthropic, or generic local/cloud endpoints.
+*   **Human-In-The-Loop (`ask_user` tool)**: If the LLM gets stuck or encounters an unexpected 2FA request, it automatically pauses the browser and pushes a direct message to your Telegram asking for guidance before continuing.
+*   **Automated Job URL Scraping**: Uses Playwright to reliably extract job postings across complex enterprise portals (Greenhouse, Workday, Lever, Phenom).
+
+---
+
+## 📊 Current Portal Status
+
+| Portal | Auto-Apply | Job Scraping | Login / Cookie |
+| :--- | :--- | :--- | :--- |
+| **Naukri** | ✅ Works flawlessly end-to-end | ✅ Working | ✅ Working |
+| **LinkedIn** | ⚠️ Partially Working | ❌ Broken (Anti-bot measures) | ✅ Working |
+| **InstaHyre** | ❌ Not Implemented | ❌ Not Implemented | ❌ Not Implemented |
 
 ---
 
@@ -26,35 +35,29 @@ Job URL / JD Text ──► Scraper & LLM Analysis ──► Provider-Agnostic L
 
 ```mermaid
 graph TD
-    UserTelegram["Telegram App (Mobile/Desktop)"] -->|Send Job URL / Text| BotHandler["Local Telegram Bot"]
-    CLIUser["CLI / Subprocess / Web App"] -->|Invoke CLI Command| CLI_Engine["scripts/cli_tailor.py"]
+    UserTelegram["Telegram App (Mobile/Desktop)"] -->|Send Job URL / Text / Replies| RedisGateway["Redis Gateway (redis_gateway.py)"]
+    CLIUser["CLI / Cron Job"] -->|Invoke Factory| RedisGateway
     
-    BotHandler -->|Subprocess JSON-RPC| CLI_Engine
+    RedisGateway -->|Factory Pattern| ApplyTask["JobTaskFactory (Headed Mode)"]
     
-    CLI_Engine --> Scraper["Playwright DOM Scraper"]
-    CLI_Engine --> LLMFallback["scripts/common_stuff/llm_fallback.py"]
+    ApplyTask --> Scraper["Playwright Native Scripts"]
+    Scraper -->|If Script Fails| CustomLLMAgent["CustomLLMAgent (Visual Fallback)"]
     
-    LLMFallback -->|Check API Keys| LLMProvider{"Configured LLM Provider"}
-    LLMProvider -->|Gemini API| Gemini["Google Gemini 2.5 Flash"]
-    LLMProvider -->|OpenAI API| OpenAI["OpenAI GPT-4o / GPT-4o-mini"]
-    LLMProvider -->|OpenRouter API| OpenRouter["OpenRouter / Auto"]
-    LLMProvider -->|Anthropic API| Anthropic["Claude 3.5 Haiku"]
-    LLMProvider -->|Local / Custom| Generic["Local Ollama / vLLM / Groq"]
+    CustomLLMAgent -->|Take Screenshot + DOM| LLMProvider{"Configured LLM API"}
+    LLMProvider -->|Tool Call: click/type/scroll| CustomLLMAgent
+    LLMProvider -->|Tool Call: ask_user| RedisGateway
     
-    CLI_Engine --> PDFBuilder["Playwright A4 PDF Engine"]
+    ApplyTask --> PDFBuilder["Playwright A4 PDF Engine"]
     
     PDFBuilder --> ResumePDF["1-Page A4 Resume PDF"]
     PDFBuilder --> CoverPDF["1-Page A4 Cover Letter PDF"]
-    CLI_Engine --> OutreachDM["LinkedIn Recruiter DM"]
     
-    ResumePDF --> BotHandler
-    CoverPDF --> BotHandler
-    OutreachDM --> BotHandler
+    ResumePDF --> RedisGateway
+    CoverPDF --> RedisGateway
     
-    BotHandler -->|Upload PDF Documents & Send DM| UserTelegram
+    RedisGateway -->|Upload PDF & Results| UserTelegram
 ```
 
----
 
 ## ⚙️ Environment Configuration (`.env`)
 

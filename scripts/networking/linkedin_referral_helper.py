@@ -99,15 +99,16 @@ def extract_job_keyword(job_title: str) -> str:
         return 'Fullstack'
     elif 'data' in title_lower or 'ml' in title_lower or 'machine' in title_lower:
         return 'Data'
+    elif 'software' in title_lower or 'developer' in title_lower or 'engineer' in title_lower or 'sde' in title_lower:
+        return 'Software Engineer'
     else:
-        # Take first non-trivial alphabetic word
         words = [w for w in job_title.split() if w.isalpha()]
         for w in words:
             if w.lower() not in ["senior", "junior", "lead", "staff", "principal", "associate"]:
                 return w
         if words:
             return words[0]
-        return "Software"
+        return "Software Engineer"
 
 
 class BaseDiscoveryProvider(ABC):
@@ -169,10 +170,7 @@ class LinkedInSearchDiscoveryProvider(BaseDiscoveryProvider):
                     break
         
         try:
-            await self.page.wait_for_selector(
-                '.reusable-search__result-container, .entity-result, .search-reusables__no-results, .search-results__no-results, [class*="no-results"]', 
-                timeout=15000
-            )
+            await self.page.wait_for_selector('a[href*="/in/"]', timeout=15000)
         except Exception as e:
             logger.warning(f"Timeout waiting for search results selectors for query '{query}': {e}")
             
@@ -181,84 +179,67 @@ class LinkedInSearchDiscoveryProvider(BaseDiscoveryProvider):
             await self.page.evaluate("window.scrollBy(0, 350)")
             await self._human_pause(300, 600)
             
-        cards = await self.page.locator('.reusable-search__result-container, .entity-result').all()
         candidates = []
-        
-        if cards:
-            for card in cards[:max_results]:
-                try:
-                    links = await card.locator('a[href*="/in/"]').all()
-                    profile_url = ""
-                    name = ""
-                    
-                    for link in links:
-                        href = await link.get_attribute("href")
-                        if href:
-                            if "?" in href:
-                                href = href.split("?")[0]
-                            profile_url = href
-                            
-                            text = await link.text_content()
-                            if text:
-                                text = text.strip()
-                                lines = [l.strip() for l in text.split('\n') if l.strip()]
-                                if lines:
-                                    cand_name = lines[0]
-                                    for term in ["•", "1st", "2nd", "3rd", "degree"]:
-                                        if term in cand_name:
-                                            cand_name = cand_name.split(term)[0].strip()
-                                    if cand_name and not name and cand_name.lower() != "linkedin member":
-                                        name = cand_name
-                    
-                    if not profile_url:
-                        continue
+        all_links = await self.page.locator('a[href*="/in/"]').all()
+        seen_urls = set()
+        for link in all_links:
+            try:
+                href = await link.get_attribute("href")
+                if not href:
+                    continue
+                if "?" in href:
+                    href = href.split("?")[0]
+                if href in seen_urls or "/in/ACoAA" in href or "linkedin.com/in/search" in href:
+                    continue
+                
+                text = await link.text_content()
+                if not text:
+                    continue
+                text = text.strip()
+                lines = [l.strip() for l in text.split('\\n') if l.strip()]
+                name = lines[0] if lines else ""
+                
+                for term in ["•", "1st", "2nd", "3rd", "degree"]:
+                    if term in name:
+                        name = name.split(term)[0].strip()
                         
-                    headline = ""
-                    subtitle_elem = card.locator('.entity-result__primary-subtitle, .entity-result__summary, [class*="primary-subtitle"]')
-                    if await subtitle_elem.count() > 0:
-                        headline = await subtitle_elem.first.text_content()
-                        if headline:
-                            headline = headline.strip()
-                            
-                    candidates.append({
-                        "name": name or "LinkedIn Member",
-                        "headline": headline or "",
-                        "profile_url": profile_url
-                    })
-                except Exception as e:
-                    logger.error(f"Error parsing search result card: {e}")
-        else:
-            # Fallback parse: extract candidate profiles directly from /in/ links on page
-            logger.info("No card elements found. Attempting profile-link parsing fallback...")
-            all_links = await self.page.locator('a[href*="/in/"]').all()
-            seen_urls = set()
-            for link in all_links:
-                try:
-                    href = await link.get_attribute("href")
-                    if href:
-                        if "?" in href:
-                            href = href.split("?")[0]
-                        if href in seen_urls or "/in/ACoAA" in href or "linkedin.com/in/search" in href:
-                            continue
-                        seen_urls.add(href)
-                        
-                        text = await link.text_content()
-                        name = text.strip().split('\n')[0].strip() if text else ""
-                        for term in ["•", "1st", "2nd", "3rd", "degree"]:
-                            if term in name:
-                                name = name.split(term)[0].strip()
-                        if not name or name.lower() in ["linkedin member", "view profile", "connect"]:
-                            continue
-                            
-                        candidates.append({
-                            "name": name,
-                            "headline": "LinkedIn Member",
-                            "profile_url": href
-                        })
-                except Exception as e:
-                    logger.debug(f"Fallback parsing failed for link: {e}")
+                if not name or name.lower() in ["linkedin member", "view profile", "connect", "message"]:
+                    continue
                     
-        return candidates[:max_results]
+                seen_urls.add(href)
+                
+                # Get headline from the ancestor LI or parent container
+                headline = "LinkedIn Member"
+                try:
+                    li_locator = link.locator('xpath=./ancestor::li').first
+                    if await li_locator.count() > 0:
+                        card_text = await li_locator.text_content()
+                    else:
+                        # Fallback to a div that might contain the card
+                        div_locator = link.locator('xpath=./ancestor::div[contains(@class, "search-result") or contains(@class, "entity")]').first
+                        if await div_locator.count() > 0:
+                            card_text = await div_locator.text_content()
+                        else:
+                            card_text = ""
+                            
+                    if card_text:
+                        card_lines = [l.strip() for l in card_text.split('\\n') if l.strip()]
+                        headline = " | ".join(card_lines[:6])
+                except Exception:
+                    pass
+                    
+                candidates.append({
+                    "name": name,
+                    "headline": headline,
+                    "profile_url": href
+                })
+                
+                if len(candidates) >= max_results:
+                    break
+            except Exception as e:
+                logger.debug(f"Parsing failed for link: {e}")
+                
+        return candidates
 
     async def discover_candidates(self, company_name: str, job_title_keyword: str) -> list:
         """
@@ -410,15 +391,18 @@ class LinkedInReferralHelper:
         if any(kw in headline_lower for kw in manager_config.get("keywords", [])):
             return manager_config.get("score", 0.6)
             
-        # Check QA next (including job_title_keyword match)
+        # Check QA next
         qa_config = SCORING_KEYWORDS.get("QA", {})
-        if any(kw in headline_lower for kw in qa_config.get("keywords", [])) or (keyword_lower in headline_lower):
+        if any(kw in headline_lower for kw in qa_config.get("keywords", [])):
             return qa_config.get("score", 0.8)
             
         # Check Developer next
         dev_config = SCORING_KEYWORDS.get("Developer", {})
         if any(kw in headline_lower for kw in dev_config.get("keywords", [])):
             return dev_config.get("score", 0.5)
+            
+        if keyword_lower in headline_lower:
+            return 0.5
             
         return DEFAULT_SCORE
 

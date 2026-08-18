@@ -50,7 +50,8 @@ class GreenhouseAdapter(BaseATSAdapter):
         self,
         resume_path: str,
         user_profile: Dict[str, Any],
-        review_mode: bool = True
+        review_mode: bool = True,
+        **kwargs: Any
     ) -> bool:
         logger.info("🌿 Starting Greenhouse Application Pipeline...")
 
@@ -86,7 +87,7 @@ class GreenhouseAdapter(BaseATSAdapter):
             if await submit_btn.count() > 0 and await submit_btn.is_visible():
                 logger.info("🚀 Submitting Greenhouse Application...")
                 await submit_btn.click()
-                await self.page.wait_for_timeout(3000)
+                await self.verify_submission()
                 logger.info("✅ Greenhouse Application submitted successfully.")
                 return True
 

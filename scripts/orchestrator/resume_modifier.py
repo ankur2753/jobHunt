@@ -86,13 +86,15 @@ Return a JSON with this exact schema:
 }}"""
 
     logger.info("Calling LLM to select resume items...")
-    result = subprocess.run(["agy", "--dangerously-skip-permissions", "--print", prompt], capture_output=True, text=True)
+    from scripts.common_stuff.agent_runtime import AgentRuntime
+    result = AgentRuntime.invoke(prompt)
     
     if result.returncode != 0:
         logger.error(f"agy CLI failed: {result.stderr}")
-        raise RuntimeError("LLM selection failed.")
         
     output = result.stdout.strip()
+    if not output and result.stderr:
+        output = result.stderr.strip()
     
     # Extract JSON if markdown formatting is present
     if "```json" in output:
@@ -103,8 +105,17 @@ Return a JSON with this exact schema:
     try:
         selection = json.loads(output)
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse LLM output as JSON: {output}")
-        raise e
+        start = output.find('{')
+        end = output.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            try:
+                selection = json.loads(output[start:end+1])
+            except json.JSONDecodeError as inner_e:
+                logger.error(f"Failed to parse LLM output from braces: {output}")
+                raise inner_e
+        else:
+            logger.error(f"Failed to parse LLM output as JSON: {output}")
+            raise e
         
     # Assemble the final resume data
     summary_type = selection.get("summary_type")
@@ -160,8 +171,8 @@ async def generate_tailored_resume(company: str, job_title: str, jd_text: str = 
     resume_data = tailor_resume_data_for_job(company, job_title, jd_text)
 
     # Sanitize file paths
-    safe_company = "".join(c for c in company if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Company"
-    safe_title = "".join(c for c in job_title if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Role"
+    safe_company = "".join(c for c in (company or "Company") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Company"
+    safe_title = "".join(c for c in (job_title or "Role") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Role"
 
     out_dir = PROJECT_ROOT / "resumes" / "tailored"
     out_dir.mkdir(parents=True, exist_ok=True)

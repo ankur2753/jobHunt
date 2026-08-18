@@ -15,8 +15,8 @@ function doPost(e) {
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["Timestamp", "Job Title", "Company", "Portal", "Status", "Questions Answered"]);
-      sheet.getRange(1, 1, 1, 6).setFontWeight("bold");
+      sheet.appendRow(["Timestamp", "Job Title", "Company", "Portal", "Status", "Questions Answered", "Failure", "Screenshot"]);
+      sheet.getRange(1, 1, 1, 8).setFontWeight("bold");
     }
     var data = {};
     if (e && e.postData && e.postData.contents) {
@@ -28,8 +28,10 @@ function doPost(e) {
     var portal = data.portal || "Unknown Portal";
     var status = data.status || "UNKNOWN";
     var questionsAnswered = data.questions_answered !== undefined ? data.questions_answered : 0;
+    var failure = (status.toLowerCase() === "failed") ? "Yes" : "No";
+    var screenshot = data.screenshot_path || data.screenshot || "N/A";
     
-    sheet.appendRow([timestamp, jobTitle, company, portal, status, questionsAnswered]);
+    sheet.appendRow([timestamp, jobTitle, company, portal, status, questionsAnswered, failure, screenshot]);
     return ContentService.createTextOutput(JSON.stringify({ "status": "success" }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {

@@ -11,10 +11,14 @@
             "id": "04c44fa380437fd8",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "INSTALLATION_TODO.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "INSTALLATION_TODO"
             }
           }
         ]
@@ -37,7 +41,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -178,6 +184,16 @@
   },
   "active": "04c44fa380437fd8",
   "lastOpenFiles": [
+    "RESUME_TAILORING_ENGINE.md",
+    "IMPLEMENTATION_SUMMARY.md",
+    "KNOWN_BUGS.md",
+    "CLAUDE.md",
+    "scripts/job_scraping/naukri_job_apply.py.md",
+    "scripts/job_scraping",
+    "scripts",
+    "CHATBOT_FORM_FILLER_IMPLEMENTATION.md",
+    "f7053cf0-14f8-4e99-ac02-8990ebbc3407/session-memory.md",
+    "FORM_PARSING_VISUAL_GUIDE.md",
     "PROJECT_MAP.md"
   ]
 }

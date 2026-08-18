@@ -218,8 +218,8 @@ class ATSResumeTailor:
         html_content = self._markdown_to_html(tailored_md)
 
         # Generate output PDF filename
-        safe_company = "".join(c for c in company_name if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Company"
-        safe_title = "".join(c for c in job_title if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Role"
+        safe_company = "".join(c for c in (company_name or "Company") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Company"
+        safe_title = "".join(c for c in (job_title or "Role") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_") or "Role"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         pdf_filename = f"Resume_{safe_company}_{safe_title}_{timestamp}.pdf"
         output_pdf_path = self.output_dir / pdf_filename

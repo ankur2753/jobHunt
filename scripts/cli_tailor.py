@@ -33,7 +33,7 @@ def load_master_profile() -> dict:
     raise ValueError("personal_details.json not found or invalid.")
 
 
-async def fetch_job_details(url: str = None, jd_text: str = None) -> dict:
+async def fetch_job_details(url: str = None, jd_text: str = None, headed: bool = False) -> dict:
     """Extracts raw text from URL."""
     raw_text = ""
     if url:
@@ -41,11 +41,11 @@ async def fetch_job_details(url: str = None, jd_text: str = None) -> dict:
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(headless=not headed)
                 page = await browser.new_page()
                 try:
-                    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-                    await page.wait_for_timeout(3000)
+                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                    await page.wait_for_timeout(5000)
                 except Exception as net_err:
                     logger.warning(f"Playwright navigation notice ({net_err}). Extracting rendered DOM content anyway...")
                 
@@ -61,32 +61,57 @@ async def fetch_job_details(url: str = None, jd_text: str = None) -> dict:
         raise ValueError("No job description text or reachable URL provided.")
 
     job_info = {
-        "title": "Target Role",
-        "company": "Target Company",
+        "title": "Unknown_Role",
+        "company": "Unknown_Company",
         "raw_text": raw_text
     }
     
     # Extract Title and Company from raw text
     prompt = f"Extract 'title' and 'company' from this text and return ONLY JSON like {{\"title\": \"...\", \"company\": \"...\"}}.\n\n{raw_text[:2000]}"
     try:
-        res = subprocess.run(["agy", "--dangerously-skip-permissions", "--print", prompt], capture_output=True, text=True)
+        from scripts.common_stuff.agent_runtime import AgentRuntime
+        res = AgentRuntime.invoke(prompt)
         if res.returncode == 0:
             out = res.stdout.strip()
             if "```json" in out:
                 out = out.split("```json")[1].split("```")[0].strip()
             elif "```" in out:
                 out = out.split("```")[1].split("```")[0].strip()
-            parsed = json.loads(out)
-            job_info.update(parsed)
-    except Exception:
-        pass
+            
+            try:
+                parsed = json.loads(out)
+            except json.JSONDecodeError:
+                start = out.find('{')
+                end = out.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    parsed = json.loads(out[start:end+1])
+                else:
+                    parsed = {}
+
+            if isinstance(parsed, dict):
+                title = parsed.get("title")
+                company = parsed.get("company")
+                if title and isinstance(title, str) and title.strip():
+                    job_info["title"] = title.strip()
+                if company and isinstance(company, str) and company.strip():
+                    job_info["company"] = company.strip()
+    except Exception as e:
+        logger.warning(f"Failed to extract title/company via LLM: {e}")
         
     return job_info
 
 
 def generate_cover_letter_html(name: str, company: str, title: str, letter_paragraphs: list) -> str:
+    name = (name if isinstance(name, str) and name.strip() else "Candidate").strip()
+    company = (company if isinstance(company, str) and company.strip() else "Unknown_Company").strip()
+    title = (title if isinstance(title, str) and title.strip() else "Unknown_Role").strip()
     today_str = datetime.now().strftime("%B %d, %Y")
-    paragraphs_html = "\n".join([f"<p>{p}</p>" if not p.startswith("<p>") else p for p in letter_paragraphs])
+    paragraphs = letter_paragraphs or [
+        "Dear Hiring Manager,",
+        f"I am writing to express my strong interest in the <strong>{title}</strong> position at {company}.",
+        "I would welcome the opportunity to discuss how my automation experience and technical problem-solving skills can support your team. Thank you for your time and consideration."
+    ]
+    paragraphs_html = "\n".join([f"<p>{p}</p>" if not p.startswith("<p>") else p for p in paragraphs])
     
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -152,12 +177,22 @@ def generate_cover_letter_html(name: str, company: str, title: str, letter_parag
 """
 
 
-async def run_automation(url: str = None, jd_text: str = None, company_override: str = None, role_override: str = None) -> dict:
+async def run_automation(url: str = None, jd_text: str = None, company_override: str = None, role_override: str = None, headed: bool = False) -> dict:
     """Full automation pipeline for resume + cover letter + linkedin message generation."""
-    job_info = await fetch_job_details(url=url, jd_text=jd_text)
+    job_info = await fetch_job_details(url=url, jd_text=jd_text, headed=headed)
     
-    company = company_override or job_info.get("company", "Target Company")
-    role = role_override or job_info.get("title", "Target Role")
+    company = company_override or job_info.get("company")
+    role = role_override or job_info.get("title")
+
+    if not company or not isinstance(company, str) or not company.strip():
+        company = "Unknown_Company"
+    else:
+        company = company.strip()
+
+    if not role or not isinstance(role, str) or not role.strip():
+        role = "Unknown_Role"
+    else:
+        role = role.strip()
     
     master_bank = load_master_profile()
     
@@ -191,12 +226,15 @@ Return a JSON with this exact schema:
 }}"""
     
     logger.info("Calling agy CLI to generate tailored data...")
-    result = subprocess.run(["agy", "--dangerously-skip-permissions", "--print", prompt], capture_output=True, text=True)
+    from scripts.common_stuff.agent_runtime import AgentRuntime
+    result = AgentRuntime.invoke(prompt)
     if result.returncode != 0:
         logger.error(f"agy CLI failed: {result.stderr}")
-        raise RuntimeError("LLM tailoring failed.")
         
     output = result.stdout.strip()
+    if not output and result.stderr:
+        output = result.stderr.strip()
+
     if "```json" in output:
         output = output.split("```json")[1].split("```")[0].strip()
     elif "```" in output:
@@ -204,9 +242,18 @@ Return a JSON with this exact schema:
         
     try:
         selection = json.loads(output)
-    except Exception as e:
-        logger.error(f"Failed to parse LLM structured JSON: {e}")
-        raise e
+    except json.JSONDecodeError as e:
+        start = output.find('{')
+        end = output.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            try:
+                selection = json.loads(output[start:end+1])
+            except Exception as inner_e:
+                logger.error(f"Failed to parse LLM structured JSON from braces: {inner_e}")
+                raise inner_e
+        else:
+            logger.error(f"Failed to parse LLM structured JSON: {e}")
+            raise e
         
     # Assemble the final resume data
     summary_type = selection.get("summary_type")
@@ -260,8 +307,8 @@ Return a JSON with this exact schema:
         ])
     )
 
-    safe_comp = "".join(c for c in company if c.isalnum() or c in ("_", "-")).strip() or "Company"
-    safe_role = "".join(c for c in role if c.isalnum() or c in ("_", "-")).strip() or "Role"
+    safe_comp = "".join(c for c in (company or "Unknown_Company") if c.isalnum() or c in ("_", "-")).strip() or "Unknown_Company"
+    safe_role = "".join(c for c in (role or "Unknown_Role") if c.isalnum() or c in ("_", "-")).strip() or "Unknown_Role"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     resume_pdf_filename = f"Resume_{safe_comp}_{safe_role}_{timestamp}.pdf"
@@ -275,7 +322,7 @@ Return a JSON with this exact schema:
 
     from playwright.async_api import async_playwright
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=not headed)
 
         page1 = await browser.new_page()
         await page1.set_content(resume_html, wait_until="load")
@@ -307,6 +354,7 @@ def main():
     parser.add_argument("--company", type=str, help="Company name override")
     parser.add_argument("--role", type=str, help="Role title override")
     parser.add_argument("--json", action="store_true", help="Print result as clean JSON string")
+    parser.add_argument("--headed", action="store_true", help="Run Playwright in headed mode")
 
     args = parser.parse_args()
 
@@ -318,7 +366,8 @@ def main():
         url=args.url,
         jd_text=args.jd_text,
         company_override=args.company,
-        role_override=args.role
+        role_override=args.role,
+        headed=args.headed
     ))
 
     if args.json:

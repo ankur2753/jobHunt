@@ -68,7 +68,8 @@ class GenericATSAdapter(BaseATSAdapter):
         resume_path: str,
         user_profile: Dict[str, Any],
         review_mode: bool = True,
-        cover_letter_path: Optional[str] = None
+        cover_letter_path: Optional[str] = None,
+        **kwargs: Any
     ) -> bool:
         logger.info("⚙️ Running Generic ATS Auto-Apply Pipeline...")
         
@@ -149,7 +150,7 @@ class GenericATSAdapter(BaseATSAdapter):
                     if await btn.count() > 0 and await btn.is_visible():
                         logger.info(f"🚀 Submitting application via {sub_sel}...")
                         await btn.click()
-                        await self.page.wait_for_timeout(3000)
+                        await self.verify_submission()
                         return True
                 except Exception as e:
                     logger.debug(f"Submit attempt failed for {sub_sel}: {e}")
