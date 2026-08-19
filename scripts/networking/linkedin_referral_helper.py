@@ -11,14 +11,19 @@ import json
 import logging
 import random
 import re
-from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote
 from playwright.async_api import Page
 
 # Import externalized constants for scoring
 from scripts.networking.referral_constants import SCORING_KEYWORDS, DEFAULT_SCORE
+
+# Import discovery providers
+from scripts.networking.discovery_providers import (
+    BaseDiscoveryProvider,
+    LinkedInSearchDiscoveryProvider,
+    LinkedInAPIDiscoveryProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,160 +114,6 @@ def extract_job_keyword(job_title: str) -> str:
         if words:
             return words[0]
         return "Software Engineer"
-
-
-class BaseDiscoveryProvider(ABC):
-    """
-    Abstract Base Class defining the interface for candidate discovery.
-    """
-
-    @abstractmethod
-    async def discover_candidates(self, company_name: str, job_title_keyword: str) -> list:
-        """
-        Discover potential referral candidates for a given company name and job keyword.
-
-        :param company_name: Name of target firm.
-        :param job_title_keyword: Extracted role keyword for peers.
-        :return: List of candidate dictionaries: [{"name": ..., "headline": ..., "profile_url": ...}]
-        """
-        pass
-
-
-class LinkedInSearchDiscoveryProvider(BaseDiscoveryProvider):
-    """
-    LinkedIn search implementation of candidate discovery.
-    """
-
-    def __init__(self, page: Page = None) -> None:
-        self.page = page
-
-    async def _human_pause(self, min_ms: int = 700, max_ms: int = 1600):
-        if self.page:
-            await self.page.wait_for_timeout(random.randint(min_ms, max_ms))
-
-    async def search_people(self, query: str, max_results: int = 5) -> list:
-        """
-        Navigates to LinkedIn people search and parses candidate name, profile URL, and headline.
-        Resilient to selector changes and rate limit / checkpoint checks.
-        """
-        if not self.page:
-            logger.warning("Playwright Page not initialized.")
-            return []
-            
-        query_encoded = quote(query)
-        search_url = f"https://www.linkedin.com/search/results/people/?keywords={query_encoded}"
-        logger.info(f"Searching LinkedIn people: {search_url}")
-        
-        await self.page.goto(search_url, wait_until="domcontentloaded")
-        await self._human_pause(2500, 4000)
-        
-        # Check for security verification checkpoint
-        body_html = await self.page.content()
-        if "checkpoint" in self.page.url or "challenge" in self.page.url or "captcha" in body_html.lower() or "security check" in body_html.lower():
-            print("\n⚠️  SECURITY CHECKPOINT / CAPTCHA DETECTED on LinkedIn!")
-            print("Please solve the verification challenge in the browser window.")
-            # Pause and wait for manual resolution
-            for i in range(12):
-                await self._human_pause(5000, 5000)
-                body_html = await self.page.content()
-                if "checkpoint" not in self.page.url and "challenge" not in self.page.url:
-                    print("✅ Verification resolved. Continuing search...")
-                    break
-        
-        try:
-            await self.page.wait_for_selector('a[href*="/in/"]', timeout=15000)
-        except Exception as e:
-            logger.warning(f"Timeout waiting for search results selectors for query '{query}': {e}")
-            
-        # Scroll to lazy-load elements
-        for _ in range(3):
-            await self.page.evaluate("window.scrollBy(0, 350)")
-            await self._human_pause(300, 600)
-            
-        candidates = []
-        all_links = await self.page.locator('a[href*="/in/"]').all()
-        seen_urls = set()
-        for link in all_links:
-            try:
-                href = await link.get_attribute("href")
-                if not href:
-                    continue
-                if "?" in href:
-                    href = href.split("?")[0]
-                if href in seen_urls or "/in/ACoAA" in href or "linkedin.com/in/search" in href:
-                    continue
-                
-                text = await link.text_content()
-                if not text:
-                    continue
-                text = text.strip()
-                lines = [l.strip() for l in text.split('\\n') if l.strip()]
-                name = lines[0] if lines else ""
-                
-                for term in ["•", "1st", "2nd", "3rd", "degree"]:
-                    if term in name:
-                        name = name.split(term)[0].strip()
-                        
-                if not name or name.lower() in ["linkedin member", "view profile", "connect", "message"]:
-                    continue
-                    
-                seen_urls.add(href)
-                
-                # Get headline from the ancestor LI or parent container
-                headline = "LinkedIn Member"
-                try:
-                    li_locator = link.locator('xpath=./ancestor::li').first
-                    if await li_locator.count() > 0:
-                        card_text = await li_locator.text_content()
-                    else:
-                        # Fallback to a div that might contain the card
-                        div_locator = link.locator('xpath=./ancestor::div[contains(@class, "search-result") or contains(@class, "entity")]').first
-                        if await div_locator.count() > 0:
-                            card_text = await div_locator.text_content()
-                        else:
-                            card_text = ""
-                            
-                    if card_text:
-                        card_lines = [l.strip() for l in card_text.split('\\n') if l.strip()]
-                        headline = " | ".join(card_lines[:6])
-                except Exception:
-                    pass
-                    
-                candidates.append({
-                    "name": name,
-                    "headline": headline,
-                    "profile_url": href
-                })
-                
-                if len(candidates) >= max_results:
-                    break
-            except Exception as e:
-                logger.debug(f"Parsing failed for link: {e}")
-                
-        return candidates
-
-    async def discover_candidates(self, company_name: str, job_title_keyword: str) -> list:
-        """
-        Dual-Query Search implementation mapping recruiters and peers.
-        """
-        # Query 1: Recruiters
-        recruiter_query = f"{company_name} recruiter"
-        recruiter_candidates = await self.search_people(recruiter_query)
-        
-        # Query 2: Peers
-        peer_query = f"{company_name} {job_title_keyword}"
-        peer_candidates = await self.search_people(peer_query)
-        
-        # Merge & deduplicate by profile URL
-        seen_urls = set()
-        unique_candidates = []
-        for c in recruiter_candidates + peer_candidates:
-            url = c["profile_url"]
-            if url not in seen_urls:
-                seen_urls.add(url)
-                unique_candidates.append(c)
-                
-        return unique_candidates
 
 
 class LinkedInReferralHelper:
