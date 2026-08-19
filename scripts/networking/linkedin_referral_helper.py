@@ -23,6 +23,7 @@ from scripts.networking.discovery_providers import (
     BaseDiscoveryProvider,
     LinkedInSearchDiscoveryProvider,
     LinkedInAPIDiscoveryProvider,
+    ApifyDiscoveryProvider,
 )
 
 logger = logging.getLogger(__name__)

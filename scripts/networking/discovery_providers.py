@@ -5,6 +5,7 @@ Defines the BaseDiscoveryProvider interface and modular discovery provider imple
 - BaseDiscoveryProvider (Abstract Base Class interface)
 - LinkedInSearchDiscoveryProvider (Playwright browser automation)
 - LinkedInAPIDiscoveryProvider (linkedin-api Python package)
+- ApifyDiscoveryProvider (Apify API actor scraper)
 """
 
 import json
@@ -27,6 +28,16 @@ try:
     from linkedin_api import Linkedin
 except ImportError:
     Linkedin = None
+
+try:
+    from apify_client import ApifyClient
+except ImportError:
+    ApifyClient = None
+
+try:
+    import requests
+except ImportError:
+    requests = None
 
 
 class BaseDiscoveryProvider(ABC):
@@ -444,3 +455,254 @@ class LinkedInAPIDiscoveryProvider(BaseDiscoveryProvider):
 
         logger.info(f"Discovered {len(unique_candidates)} unique candidates via LinkedIn API for '{company_name}'")
         return unique_candidates
+
+
+class ApifyDiscoveryProvider(BaseDiscoveryProvider):
+    """
+    LinkedIn candidate discovery provider using Apify API actor scrapers
+    (e.g., curious_coder/linkedin-search-scraper).
+
+    A safe alternative that searches public LinkedIn data using the Apify cloud API,
+    avoiding any use of or risk to the user's personal LinkedIn account.
+    """
+
+    def __init__(
+        self,
+        api_token: Optional[str] = None,
+        actor_id: str = "curious_coder/linkedin-search-scraper",
+        client: Optional[Any] = None,
+        timeout: int = 60,
+        **kwargs
+    ) -> None:
+        """
+        Initialize the Apify discovery provider.
+
+        :param api_token: Apify API token (defaults to APIFY_API_TOKEN env var).
+        :param actor_id: Apify actor ID or slug to execute (default: curious_coder/linkedin-search-scraper).
+        :param client: Optional pre-configured ApifyClient or custom client instance.
+        :param timeout: HTTP request timeout in seconds.
+        """
+        self.api_token = api_token or os.getenv("APIFY_API_TOKEN")
+        self.actor_id = actor_id
+        self.client = client
+        self.timeout = timeout
+        self.kwargs = kwargs
+
+        if self.client is None and self.api_token and ApifyClient is not None:
+            try:
+                self.client = ApifyClient(self.api_token, **self.kwargs)
+            except Exception as e:
+                logger.warning(f"Failed to initialize ApifyClient: {e}")
+                self.client = None
+
+        if not self.api_token and not self.client:
+            logger.warning(
+                "APIFY_API_TOKEN is not set and no client was provided. "
+                "Apify candidate discovery will be unavailable unless an API token is provided."
+            )
+
+    def _parse_candidate(self, item: Any) -> Optional[Dict[str, str]]:
+        """
+        Parse raw result from Apify actor output into normalized candidate dictionary:
+        {"name": ..., "headline": ..., "profile_url": ...}
+        """
+        if not isinstance(item, dict):
+            return None
+
+        # Extract name
+        name = item.get("name") or item.get("fullName") or item.get("title") or item.get("actorName")
+        if not name:
+            first_name = item.get("firstName") or item.get("first_name") or ""
+            last_name = item.get("lastName") or item.get("last_name") or ""
+            name = f"{first_name} {last_name}".strip()
+
+        if not name:
+            name = "LinkedIn Member"
+
+        # Clean name suffixes / connection degree markers
+        for term in ["•", "1st", "2nd", "3rd", "degree"]:
+            if term in name:
+                name = name.split(term)[0].strip()
+
+        if not name or name.lower() in ["linkedin member", "view profile", "connect", "message"]:
+            name = "LinkedIn Member"
+
+        # Extract headline
+        headline = (
+            item.get("headline")
+            or item.get("occupation")
+            or item.get("subline")
+            or item.get("position")
+            or item.get("jobTitle")
+            or item.get("job_title")
+            or item.get("summary")
+            or item.get("snippet")
+            or ""
+        ).strip()
+        if not headline:
+            headline = "LinkedIn Member"
+
+        # Extract profile URL
+        profile_url = (
+            item.get("profile_url")
+            or item.get("profileUrl")
+            or item.get("url")
+            or item.get("link")
+            or item.get("public_url")
+            or item.get("navigationUrl")
+        )
+
+        if not profile_url:
+            public_id = (
+                item.get("public_id")
+                or item.get("publicIdentifier")
+                or item.get("urn_id")
+                or item.get("id")
+            )
+            if public_id:
+                profile_url = f"https://www.linkedin.com/in/{public_id}"
+
+        if profile_url:
+            profile_url = str(profile_url).strip()
+            if "?" in profile_url:
+                profile_url = profile_url.split("?")[0]
+
+        if not profile_url:
+            return None
+
+        return {
+            "name": name,
+            "headline": headline,
+            "profile_url": profile_url
+        }
+
+    def _execute_actor_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Execute the Apify actor search for a given query string using either ApifyClient or REST API.
+        """
+        if not self.api_token and not self.client:
+            logger.warning("Missing APIFY_API_TOKEN; skipping Apify search.")
+            return []
+
+        run_input = {
+            "searchQueries": [query],
+            "queries": [query],
+            "keywords": query,
+            "query": query,
+            "maxResults": limit,
+            "limit": limit,
+        }
+
+        # 1. Use ApifyClient if available
+        if self.client is not None:
+            try:
+                if hasattr(self.client, "actor"):
+                    actor_runner = self.client.actor(self.actor_id)
+                    run = actor_runner.call(run_input=run_input)
+                    if isinstance(run, list):
+                        return run
+                    if isinstance(run, dict):
+                        dataset_id = run.get("defaultDatasetId")
+                        if dataset_id and hasattr(self.client, "dataset"):
+                            dataset = self.client.dataset(dataset_id)
+                            if hasattr(dataset, "iterate_items"):
+                                return list(dataset.iterate_items())
+                            elif hasattr(dataset, "list_items"):
+                                res = dataset.list_items()
+                                return res.items if hasattr(res, "items") else res.get("items", [])
+                        elif "items" in run and isinstance(run["items"], list):
+                            return run["items"]
+                elif hasattr(self.client, "search"):
+                    res = self.client.search(query)
+                    return res if isinstance(res, list) else []
+            except Exception as e:
+                logger.error(f"Apify client call error for query '{query}': {e}")
+                return []
+
+        # 2. Fallback to standard HTTP requests using REST API
+        if requests is None:
+            logger.error("Neither 'apify-client' nor 'requests' is available to execute Apify search.")
+            return []
+
+        actor_slug = self.actor_id.replace("/", "~")
+        url = f"https://api.apify.com/v2/acts/{actor_slug}/run-sync-get-dataset-items"
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json"
+        }
+        params = {
+            "token": self.api_token
+        }
+
+        try:
+            response = requests.post(
+                url,
+                json=run_input,
+                headers=headers,
+                params=params,
+                timeout=self.timeout
+            )
+            if response.status_code in [200, 201]:
+                data = response.json()
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict) and "items" in data:
+                    return data["items"]
+                return []
+            else:
+                logger.error(
+                    f"Apify API returned error status {response.status_code} for query '{query}': {response.text[:200]}"
+                )
+                return []
+        except Exception as e:
+            logger.error(f"Apify API HTTP request failed for query '{query}': {e}")
+            return []
+
+    async def discover_candidates(self, company_name: str, job_title_keyword: str) -> List[Dict[str, str]]:
+        """
+        Discover potential referral candidates (recruiters and peers) using the Apify API.
+
+        :param company_name: Name of target firm.
+        :param job_title_keyword: Extracted role keyword for peers.
+        :return: List of candidate dictionaries: [{"name": ..., "headline": ..., "profile_url": ...}]
+        """
+        if not company_name:
+            return []
+
+        if not self.api_token and not self.client:
+            logger.warning("APIFY_API_TOKEN is missing. Returning empty candidate list.")
+            return []
+
+        logger.info(f"Discovering candidates via Apify for company='{company_name}', keyword='{job_title_keyword}'")
+
+        # Query 1: Recruiters
+        recruiter_query = f"{company_name} recruiter"
+        try:
+            recruiter_raw = self._execute_actor_search(recruiter_query, limit=5)
+        except Exception as e:
+            logger.error(f"Error executing Apify search for recruiters at '{company_name}': {e}")
+            recruiter_raw = []
+
+        # Query 2: Peers
+        peer_query = f"{company_name} {job_title_keyword}" if job_title_keyword else company_name
+        try:
+            peer_raw = self._execute_actor_search(peer_query, limit=5)
+        except Exception as e:
+            logger.error(f"Error executing Apify search for peers at '{company_name}' '{job_title_keyword}': {e}")
+            peer_raw = []
+
+        # Parse & deduplicate candidates
+        seen_urls = set()
+        unique_candidates: List[Dict[str, str]] = []
+
+        for raw_item in (recruiter_raw or []) + (peer_raw or []):
+            cand = self._parse_candidate(raw_item)
+            if cand and cand.get("profile_url"):
+                url = cand["profile_url"]
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    unique_candidates.append(cand)
+
+        logger.info(f"Discovered {len(unique_candidates)} unique candidates via Apify for '{company_name}'")
+        return unique_candidates
+

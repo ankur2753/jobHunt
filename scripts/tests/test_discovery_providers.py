@@ -20,6 +20,7 @@ from scripts.networking.discovery_providers import (
     BaseDiscoveryProvider,
     LinkedInSearchDiscoveryProvider,
     LinkedInAPIDiscoveryProvider,
+    ApifyDiscoveryProvider,
 )
 from scripts.networking.linkedin_referral_helper import LinkedInReferralHelper
 
@@ -163,6 +164,143 @@ class TestDiscoveryProviders(unittest.TestCase):
 
         helper = LinkedInReferralHelper(discovery_provider=mock_provider)
         self.assertEqual(helper.discovery_provider, mock_provider)
+
+    def test_apify_provider_initialization_with_token(self):
+        """Test initializing ApifyDiscoveryProvider with an explicit token."""
+        provider = ApifyDiscoveryProvider(api_token="apify_api_token_123")
+        self.assertEqual(provider.api_token, "apify_api_token_123")
+        self.assertEqual(provider.actor_id, "curious_coder/linkedin-search-scraper")
+        self.assertIsInstance(provider, BaseDiscoveryProvider)
+
+    def test_apify_provider_initialization_with_env_var(self):
+        """Test initializing ApifyDiscoveryProvider with APIFY_API_TOKEN environment variable."""
+        with patch.dict(os.environ, {"APIFY_API_TOKEN": "env_apify_token_456"}):
+            provider = ApifyDiscoveryProvider()
+            self.assertEqual(provider.api_token, "env_apify_token_456")
+
+    def test_apify_provider_missing_token(self):
+        """Test that missing API token logs a warning and discover_candidates returns empty list."""
+        with patch.dict(os.environ, {}, clear=True):
+            if "APIFY_API_TOKEN" in os.environ:
+                del os.environ["APIFY_API_TOKEN"]
+            provider = ApifyDiscoveryProvider()
+            self.assertIsNone(provider.api_token)
+            candidates = asyncio.run(provider.discover_candidates("Google", "QA"))
+            self.assertEqual(candidates, [])
+
+    def test_apify_provider_parse_candidate(self):
+        """Test parsing candidate records from various Apify actor output formats."""
+        provider = ApifyDiscoveryProvider(api_token="dummy")
+
+        # Format 1: Direct name, headline, profileUrl with query params
+        res1 = provider._parse_candidate({
+            "name": "Jane Recruiter • 1st",
+            "headline": "Lead Technical Recruiter at Acme",
+            "profileUrl": "https://www.linkedin.com/in/jane-recruiter?trk=public-profile"
+        })
+        self.assertEqual(res1, {
+            "name": "Jane Recruiter",
+            "headline": "Lead Technical Recruiter at Acme",
+            "profile_url": "https://www.linkedin.com/in/jane-recruiter"
+        })
+
+        # Format 2: firstName + lastName, occupation, url
+        res2 = provider._parse_candidate({
+            "firstName": "Bob",
+            "lastName": "Engineer",
+            "occupation": "Senior Staff QA Engineer",
+            "url": "https://www.linkedin.com/in/bob-engineer"
+        })
+        self.assertEqual(res2, {
+            "name": "Bob Engineer",
+            "headline": "Senior Staff QA Engineer",
+            "profile_url": "https://www.linkedin.com/in/bob-engineer"
+        })
+
+        # Format 3: fullName, jobTitle, public_id
+        res3 = provider._parse_candidate({
+            "fullName": "Alice Developer",
+            "jobTitle": "Backend Lead",
+            "public_id": "alice-dev-789"
+        })
+        self.assertEqual(res3, {
+            "name": "Alice Developer",
+            "headline": "Backend Lead",
+            "profile_url": "https://www.linkedin.com/in/alice-dev-789"
+        })
+
+        # Format 4: Invalid item (missing profile URL)
+        res4 = provider._parse_candidate({"name": "No URL Person"})
+        self.assertIsNone(res4)
+
+    def test_apify_provider_discover_candidates_with_client(self):
+        """Test discover_candidates using a client mock with dual query and deduplication."""
+        mock_actor = MagicMock()
+        mock_actor.call.side_effect = [
+            # Recruiter query response
+            [
+                {"name": "Apify Recruiter 1", "headline": "Technical Recruiter", "profile_url": "https://www.linkedin.com/in/rec-1"},
+                {"name": "Duplicate Contact", "headline": "Talent Sourcing", "profile_url": "https://www.linkedin.com/in/dup-1"}
+            ],
+            # Peer query response
+            [
+                {"name": "Duplicate Contact", "headline": "Talent Sourcing", "profile_url": "https://www.linkedin.com/in/dup-1"},
+                {"name": "Apify QA Peer", "headline": "SDET II", "profile_url": "https://www.linkedin.com/in/peer-1"}
+            ]
+        ]
+        mock_client = MagicMock()
+        mock_client.actor.return_value = mock_actor
+
+        provider = ApifyDiscoveryProvider(api_token="test_token", client=mock_client)
+        candidates = asyncio.run(provider.discover_candidates("TestCorp", "SDET"))
+
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(candidates[0]["name"], "Apify Recruiter 1")
+        self.assertEqual(candidates[0]["profile_url"], "https://www.linkedin.com/in/rec-1")
+        self.assertEqual(candidates[1]["name"], "Duplicate Contact")
+        self.assertEqual(candidates[2]["name"], "Apify QA Peer")
+
+    def test_apify_provider_discover_candidates_with_requests(self):
+        """Test discover_candidates using requests mock for the REST API endpoint."""
+        mock_response_1 = MagicMock()
+        mock_response_1.status_code = 200
+        mock_response_1.json.return_value = [
+            {"name": "Recruiter One", "headline": "Recruiter", "profile_url": "https://www.linkedin.com/in/rec-one"}
+        ]
+
+        mock_response_2 = MagicMock()
+        mock_response_2.status_code = 200
+        mock_response_2.json.return_value = [
+            {"name": "Peer One", "headline": "Software Engineer", "profile_url": "https://www.linkedin.com/in/peer-one"}
+        ]
+
+        with patch("scripts.networking.discovery_providers.requests.post", side_effect=[mock_response_1, mock_response_2]) as mock_post:
+            provider = ApifyDiscoveryProvider(api_token="test_apify_token")
+            candidates = asyncio.run(provider.discover_candidates("TargetCompany", "Engineer"))
+
+            self.assertEqual(len(candidates), 2)
+            self.assertEqual(candidates[0]["name"], "Recruiter One")
+            self.assertEqual(candidates[1]["name"], "Peer One")
+            self.assertEqual(mock_post.call_count, 2)
+
+    def test_apify_provider_error_handling(self):
+        """Test that HTTP errors or network exceptions are caught gracefully."""
+        with patch("scripts.networking.discovery_providers.requests.post", side_effect=Exception("Network connection timeout")):
+            provider = ApifyDiscoveryProvider(api_token="test_apify_token")
+            candidates = asyncio.run(provider.discover_candidates("FailingCompany", "QA"))
+            self.assertEqual(candidates, [])
+
+    def test_apify_provider_empty_company(self):
+        """Test that empty company name returns an empty list without calling API."""
+        provider = ApifyDiscoveryProvider(api_token="test_token")
+        candidates = asyncio.run(provider.discover_candidates("", "QA"))
+        self.assertEqual(candidates, [])
+
+    def test_referral_helper_with_apify_provider(self):
+        """Test LinkedInReferralHelper initialization with ApifyDiscoveryProvider."""
+        provider = ApifyDiscoveryProvider(api_token="test_token")
+        helper = LinkedInReferralHelper(discovery_provider=provider)
+        self.assertEqual(helper.discovery_provider, provider)
 
 
 if __name__ == "__main__":
