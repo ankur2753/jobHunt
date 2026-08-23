@@ -17,12 +17,18 @@ class CustomLLMAgent:
             self.client = None
             return
         
-        # This allows using Groq, OpenRouter, Google AI Studio via OpenAI compatible endpoints
-        self.api_key = api_key or os.getenv("LLM_API_KEY")
-        self.base_url = base_url or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+        self.api_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
+        
+        # If no base_url provided, route to Google's OpenAI-compatible endpoint by default if using Gemini
+        default_url = "https://api.openai.com/v1"
+        if not base_url and not os.getenv("LLM_BASE_URL"):
+            if os.getenv("GEMINI_API_KEY") and not os.getenv("LLM_API_KEY"):
+                default_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+                
+        self.base_url = base_url or os.getenv("LLM_BASE_URL", default_url)
         
         if not self.api_key:
-            logger.warning("No LLM_API_KEY found. Agent will likely fail. Please set it in .env")
+            logger.warning("No API key found (tried LLM_API_KEY, GEMINI_API_KEY). Agent will likely fail. Please set it in .env")
             
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
@@ -39,8 +45,9 @@ class CustomLLMAgent:
             logger.error("API client not initialized. Cannot execute LLM loop.")
             return False
             
+        from scripts.common_stuff.prompt_manager import load_prompt
         messages = [
-            {"role": "system", "content": "You are a web automation agent. You have tools to interact with the page (click, type_text, scroll). Use the tools to complete the user's task. If you succeed, call mark_done. If it's impossible, call mark_fail."},
+            {"role": "system", "content": load_prompt("custom_llm_agent_system")},
             {"role": "user", "content": prompt}
         ]
 
@@ -90,6 +97,14 @@ class CustomLLMAgent:
                     "description": "Ask the user a question and wait for their reply.",
                     "parameters": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "query_knowledge_base",
+                    "description": "Query the user's CV, past answers, and profile to answer questions like CTC, experience, education, etc. ONLY use this when you need facts about the user.",
+                    "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
+                }
             }
         ]
 
@@ -126,8 +141,8 @@ class CustomLLMAgent:
                 
             # Remove images from previous messages to save tokens and avoid context limit
             for msg in messages:
-                if msg["role"] == "user" and isinstance(msg.get("content"), list):
-                    msg["content"] = [item for item in msg["content"] if item.get("type") != "image_url"]
+                if isinstance(msg, dict) and msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                    msg["content"] = [item for item in msg["content"] if isinstance(item, dict) and item.get("type") != "image_url"]
             
             prompt_text = (
                 f"Current screen state.\n\n"
@@ -149,7 +164,7 @@ class CustomLLMAgent:
                     model=model_name,
                     messages=messages,
                     tools=tools,
-                    tool_choice="auto",
+                    tool_choice="required",
                     max_tokens=300
                 )
                 
@@ -166,6 +181,17 @@ class CustomLLMAgent:
                     logger.info(f"LLM called tool: {action}")
                     try:
                         args = json.loads(tool_call.function.arguments)
+                        if action in ["click", "type_text", "scroll"]:
+                            import datetime
+                            record = {
+                                "timestamp": datetime.datetime.now().isoformat(),
+                                "url": page.url,
+                                "action": action,
+                                "args": args
+                            }
+                            os.makedirs("logs", exist_ok=True)
+                            with open("logs/recorded_locators.jsonl", "a") as f:
+                                f.write(json.dumps(record) + "\n")
                     except json.JSONDecodeError:
                         args = {}
 
@@ -215,6 +241,8 @@ class CustomLLMAgent:
                                     "source_agent": "job-hunt-agent",
                                     "target_agent": "my-personal-tg-bot",
                                     "action": "JOB_HUNT_RESPONSE",
+                                    "user_id": "default",
+                                    "chat_id": "default",
                                     "payload": {
                                         "status": "SUCCESS",
                                         "generated_text": f"❓ Question from Agent:\n{question}"
@@ -248,6 +276,19 @@ class CustomLLMAgent:
                                 tool_result = f"Error asking user: {e}"
                         else:
                             tool_result = "Error: no question provided"
+                    elif action == "query_knowledge_base":
+                        query = args.get("query")
+                        if query:
+                            try:
+                                from scripts.common_stuff.llm_fallback import get_fallback_answer_from_llm
+                                answer = get_fallback_answer_from_llm(query)
+                                tool_result = f"Knowledge base says: {answer}"
+                                logger.info(f"Queried knowledge base for '{query}' -> {answer}")
+                            except Exception as e:
+                                logger.error(f"Error querying knowledge base: {e}")
+                                tool_result = f"Error querying knowledge base: {e}"
+                        else:
+                            tool_result = "Error: no query provided"
                     else:
                         tool_result = f"Unknown tool: {action}"
 

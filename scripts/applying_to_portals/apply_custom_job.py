@@ -159,11 +159,8 @@ async def apply_to_custom_url(
             fast_model = os.getenv("FAST_MODEL", "gemini-1.5-flash")
             expensive_model = os.getenv("EXPENSIVE_MODEL", "gemini-1.5-pro")
             
-            prompt = (
-                "You are an autonomous browser agent taking over a job application session. "
-                "You MUST locate and click the Apply button, fill out all required fields using master data, "
-                "and click Submit. Do not return 'done' until the final confirmation page is reached."
-            )
+            from scripts.common_stuff.prompt_manager import load_prompt
+            prompt = load_prompt("apply_custom_job_agent")
             
             logger.info("Running custom LLM cascade loop.")
             agent = CustomLLMAgent()
@@ -217,13 +214,8 @@ async def apply_to_custom_url(
             logger.info("Triggering LLM visual analysis to extract metadata...")
             try:
                 from scripts.common_stuff.custom_llm_agent import CustomLLMAgent
-                analyze_prompt = (
-                    "Look at this screenshot of a job application's final state. "
-                    "Please extract the following information and return it strictly as a valid JSON object. Do not include markdown code blocks. "
-                    "Include the keys: \"company\" (the hiring company), \"position\" (the job title), "
-                    "and \"is_success\" (boolean true if the screen clearly shows a successful submission confirmation like 'Application submitted', false otherwise). "
-                    "If is_success is false, include a \"reason\" key briefly explaining WHY the application failed or what screen it is stuck on in 1 short sentence."
-                )
+                from scripts.common_stuff.prompt_manager import load_prompt
+                analyze_prompt = load_prompt("apply_custom_job_analysis")
 
                 agent = CustomLLMAgent()
                 output = await agent.analyze_image_from_path(screenshot_path, analyze_prompt)

@@ -241,11 +241,15 @@ class NaukriFormFiller:
             logger.info(f"✅ Form filling completed: {form_stats.auto_filled}/{form_stats.total_questions} filled")
         
         except PlaywrightTimeoutError as e:
+            from scripts.common_stuff.debug_utils import dump_dom_on_error
+            await dump_dom_on_error(self.page, e, "naukri_job_timeout")
             self.session.status = "failed"
             self.session.error_message = f"Timeout: {str(e)}"
             logger.error(f"❌ Timeout during form filling: {str(e)}")
         
         except Exception as e:
+            from scripts.common_stuff.debug_utils import dump_dom_on_error
+            await dump_dom_on_error(self.page, e, "naukri_job_error")
             self.session.status = "failed"
             self.session.error_message = str(e)
             logger.error(f"❌ Error during form filling: {str(e)}", exc_info=True)
@@ -702,10 +706,13 @@ class NaukriFormFiller:
                         pick = self._pick_best_chip(llm_ans, options)
                         if pick:
                             await self._click_option(pick[1])
+                            self._learn(q, pick[0])
                             await self._finish(stats, q, pick[0], 'llm_fallback', conf=0.99)
                             return
                 except Exception as e:
                     logger.error(f"Error in LLM fallback: {e}")
+                    from scripts.common_stuff.remote_logger import log_application_to_remote
+                    log_application_to_remote("LLM FALLBACK FAILURE", q, "Naukri Chatbot", "failed", extra_data={"error_message": str(e)})
             else:
                 logger.warning("⚠️ LLM Fallback: Bypassed because no active API key was found (set GEMINI_API_KEY or OPENROUTER_API_KEY in your environment or .env).")
 
@@ -746,9 +753,12 @@ class NaukriFormFiller:
                         llm_ans = await query_llm_fallback(q, options=None, profile_context=profile_context)
                         if llm_ans:
                             value = llm_ans
+                            self._learn(q, value)
                             tag = 'llm_fallback'
                     except Exception as e:
                         logger.error(f"Error in LLM fallback: {e}")
+                        from scripts.common_stuff.remote_logger import log_application_to_remote
+                        log_application_to_remote("LLM FALLBACK FAILURE", q, "Naukri Chatbot", "failed", extra_data={"error_message": str(e)})
                 else:
                     logger.warning("⚠️ LLM Fallback: Bypassed because no active API key was found (set GEMINI_API_KEY or OPENROUTER_API_KEY in your environment or .env).")
 

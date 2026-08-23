@@ -67,7 +67,8 @@ async def fetch_job_details(url: str = None, jd_text: str = None, headed: bool =
     }
     
     # Extract Title and Company from raw text
-    prompt = f"Extract 'title' and 'company' from this text and return ONLY JSON like {{\"title\": \"...\", \"company\": \"...\"}}.\n\n{raw_text[:2000]}"
+    from scripts.common_stuff.prompt_manager import load_prompt
+    prompt = load_prompt("cli_tailor_extract", raw_text=raw_text[:2000])
     try:
         from scripts.common_stuff.agent_runtime import AgentRuntime
         res = AgentRuntime.invoke(prompt)
@@ -196,34 +197,14 @@ async def run_automation(url: str = None, jd_text: str = None, company_override:
     
     master_bank = load_master_profile()
     
-    prompt = f"""You are an expert technical recruiter and resume writer.
-Given the following Job Description and the candidate's Master Bank of resume details, return ONLY a lightweight JSON mapping of the best items to select for this specific job, along with a cover letter and a LinkedIn DM.
-Ensure the total content fits on a single A4 page.
-Do NOT include any extra text, only the JSON.
-
-Job Company: {company}
-Job Title: {role}
-Job Description:
-{job_info.get('raw_text', '')[:3000]}
-
-Master Bank:
-{json.dumps(master_bank, indent=2)}
-
-Return a JSON with this exact schema:
-{{
-  "summary_type": "string", // select the best key from Master Bank's 'summaries'
-  "selected_skill_categories": ["string"], // Select 3-4 most relevant keys from 'skills'
-  "experience": [
-    {{
-      "title": "string", // exact title from master bank experience
-      "company": "string", // exact company from master bank experience
-      "selected_bullet_indices": [0, 1, ...] // 3-4 indices of bullets in the Master Bank that best match the JD
-    }}
-  ],
-  "selected_project_indices": [0, ...], // 1-2 indices of projects in Master Bank
-  "cover_letter_paragraphs": ["string", "string", "string", "string"], // 4 paragraphs
-  "linkedin_dm": "string" // short 3-sentence outreach message
-}}"""
+    from scripts.common_stuff.prompt_manager import load_prompt
+    prompt = load_prompt(
+        "cli_tailor_tailor",
+        company=company,
+        role=role,
+        job_description=job_info.get('raw_text', '')[:3000],
+        master_bank_json=json.dumps(master_bank, indent=2)
+    )
     
     logger.info("Calling agy CLI to generate tailored data...")
     from scripts.common_stuff.agent_runtime import AgentRuntime

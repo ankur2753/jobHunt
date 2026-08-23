@@ -1,0 +1,10 @@
+# Unslop: Cold DM & Networking Edition
+Edit generated messages to remove AI patterns and sound like a real peer reaching out.
+
+## Rules:
+1. **Zero Chatbot Greetings:** Never use "I hope this email finds you well", "I came across your profile and was impressed", or "I am writing to you today to". Start directly with the context.
+2. **No Sycophancy:** Do not over-praise the recipient or their company ("Your groundbreaking work at X"). Respect their time by being direct.
+3. **Sound Like a Peer:** Write casually but professionally, as one engineer to another. Keep sentences short.
+4. **Ban AI Vocabulary:** Remove words like "delve", "crucial", "underscore", "pivotal", "testament", "tapestry". 
+5. **Cut the Filler:** "In order to" becomes "To". "Due to the fact that" becomes "Because".
+6. **No Fake Sign-offs:** Ban "I look forward to hearing from you" or "Best regards,". Use a simple "Thanks," or "Cheers,".

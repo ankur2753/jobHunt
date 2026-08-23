@@ -9,11 +9,11 @@ class LinkedInJobApply:
         self.review_mode = review_mode
         self.selectors = {
             # Job search and listing
-            "job_search_input": 'input[placeholder*="Title, skill or Company"]',
-            "location_input": 'input[placeholder*="City"]',
+            "job_search_input": 'input[id*="jobs-search-box-keyword"], input[aria-label*="title" i], input[placeholder*="title" i]',
+            "location_input": 'input[id*="jobs-search-box-location"], input[aria-label*="City" i], input[aria-label*="location" i], input[placeholder*="City" i], input[placeholder*="location" i]',
             "search_button": 'button:has-text("Search")',
             "easy_apply_filter": 'button:has-text("Easy Apply")',
-            "job_cards": "div.job-card-container--clickable",
+            "job_cards": "div.job-card-container, div.job-card-container--clickable, li.jobs-search-results__list-item, div.job-card-list",
             # Easy Apply process
             "easy_apply_button": "button:has-text('Easy Apply')",
             "external_apply_button": 'a.jobs-apply-button, button:has-text("Apply")',
@@ -29,64 +29,37 @@ class LinkedInJobApply:
     async def apply_to_jobs(self, job_title: str, location: str, review_mode: Optional[bool] = None):
         effective_review_mode = self.review_mode if review_mode is None else review_mode
         print(f"Starting job search for '{job_title}' in '{location}' (review_mode={effective_review_mode})...")
-        await self.page.goto("https://www.linkedin.com/jobs/")
-
-        # Search for jobs
-        try:
-            await self.page.fill(self.selectors["job_search_input"], job_title)
-            await self.page.fill(self.selectors["location_input"], location)
-            await self.page.press(self.selectors["location_input"], "Enter")
-            await self.page.wait_for_load_state("networkidle")
-        except Exception as e:
-            print(f"Error during job search: {e}")
-            return
+        import urllib.parse
+        search_url = f"https://www.linkedin.com/jobs/search/?keywords={urllib.parse.quote(job_title)}&location={urllib.parse.quote(location)}"
+        print(f"Navigating directly to search URL (ALL jobs): {search_url}")
         
-        print("Applying Easy Apply filter...")
         try:
-            await self.page.click(self.selectors["easy_apply_filter"])
-            await self.page.wait_for_load_state("networkidle")
+            await self.page.goto(search_url, wait_until="domcontentloaded", timeout=45000)
+            await self.page.wait_for_selector(self.selectors["job_cards"], timeout=15000)
         except Exception as e:
-            print(f"Could not apply Easy Apply filter: {e}")
-
-        print("Searching for job cards...")
-        job_cards = await self.page.query_selector_all(self.selectors["job_cards"])
-        print(f"Found {len(job_cards)} job(s).")
-
-        for job_card in job_cards:
-            await job_card.click()
-            await self.page.wait_for_timeout(2000) # Wait for job details to load
-
-            try:
-                easy_apply_button = self.page.locator(self.selectors["easy_apply_button"]).first
-                if await easy_apply_button.count() > 0 and await easy_apply_button.is_visible():
-                    await easy_apply_button.click()
-
-                    modal = self.page.locator(self.selectors["modal"])
-                    if await modal.is_visible():
-                        print("Applying to a job via Easy Apply...")
-                        if effective_review_mode:
-                            print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
-                            input("Press Enter after submitting to continue...")
-                        else:
-                            await self.page.click(self.selectors["close_modal"])
-                            print("Closed application modal (for now).")
-                else:
-                    # Check for External Apply button
-                    ext_apply_btn = self.page.locator(self.selectors["external_apply_button"]).first
-                    if await ext_apply_btn.count() > 0 and await ext_apply_btn.is_visible():
-                        print("🌐 External Apply link detected on LinkedIn! Intercepting tab/URL...")
-                        async with self.page.context.expect_page() as new_page_info:
-                            await ext_apply_btn.click()
-                        new_page = await new_page_info.value
-                        await new_page.wait_for_load_state("domcontentloaded")
-                        ext_url = new_page.url
-                        print(f"Routing to Custom ATS Engine for URL: {ext_url}")
-                        await apply_to_custom_url(ext_url, review_mode=effective_review_mode, page=new_page)
-
-            except Exception as e:
-                print(f"Could not apply to a job: {e}")
-
-        print("Finished applying to jobs.")
+            from scripts.common_stuff.debug_utils import dump_dom_on_error
+            await dump_dom_on_error(self.page, e, "linkedin_job_search_url")
+            print(f"Error loading search results: {e}")
+            return
+            
+        print("Handing over to Unified LLM Agent for job scraping...")
+        from scripts.common_stuff.custom_llm_agent import CustomLLMAgent
+        
+        from scripts.common_stuff.prompt_manager import load_prompt
+        prompt = load_prompt("linkedin_job_apply")
+        
+        llm_agent = CustomLLMAgent()
+        success = await llm_agent.execute_loop(
+            page=self.page, 
+            model_name="gemini-3.7-flash", 
+            max_steps=30, 
+            prompt=prompt
+        )
+        
+        if success:
+            print("LLM finished job scraping successfully.")
+        else:
+            print("LLM failed to finish job scraping.")
 
 async def main():
     # This is for testing the script directly

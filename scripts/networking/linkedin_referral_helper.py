@@ -296,19 +296,19 @@ class LinkedInReferralHelper:
         
         if score == recruiter_score:
             template = (
-                f"Hi {first_name}, hope you're well! I applied for the {short_job_title} role at {short_company}. "
+                f"Hi {first_name}, I applied for the {short_job_title} role at {short_company}. "
                 f"With my {user_exp} in QA Automation ({skills_str}), I wanted to reach out and see if you're "
                 f"the recruiter for this role or could point me to them? Thanks, {user_first_name}"
             )
         elif score == qa_score:
             template = (
-                f"Hi {first_name}, hope you're well! I applied for the {short_job_title} role at {short_company}. "
+                f"Hi {first_name}, I applied for the {short_job_title} role at {short_company}. "
                 f"Since you also work in this space, I'd love to connect to learn about the team culture or any "
                 f"tips you might have. Thanks, {user_first_name}"
             )
         else:
             template = (
-                f"Hi {first_name}, hope you're well! I noticed you are at {short_company}. I'm interested in the "
+                f"Hi {first_name}, I noticed you are at {short_company}. I'm interested in the "
                 f"{short_job_title} role there and would love to connect to see if you have any insights or "
                 f"could refer me. Thanks, {user_first_name}"
             )
@@ -319,7 +319,7 @@ class LinkedInReferralHelper:
             
         if score == recruiter_score:
             template = (
-                f"Hi {first_name}, hope you're well! I applied for the {short_job_title} role at {short_company}. "
+                f"Hi {first_name}, I applied for the {short_job_title} role at {short_company}. "
                 f"With my {user_exp} of experience, I wanted to reach out and see if you're the recruiter "
                 f"for this role or could point me to them? Thanks, {user_first_name}"
             )
@@ -480,13 +480,13 @@ class LinkedInReferralHelper:
                 
                 if reason:
                     msg = (
-                        f"Hi {first_name}, I hope you're doing well. I noticed you work in {reason} and "
+                        f"Hi {first_name}, I noticed you work in {reason} and "
                         f"would love to connect. I build resilient automation tooling for QA & software teams "
                         f"and wanted to learn about your experience. Thanks, {user_first_name}"
                     )
                 else:
                     msg = (
-                        f"Hi {first_name}, I hope you're doing well. I'd love to connect. I work in QA "
+                        f"Hi {first_name}, I'd love to connect. I work in QA "
                         f"automation, building resilient web workflows and automation tooling. I would love to "
                         f"learn about your experience in the industry. Thanks, {user_first_name}"
                     )

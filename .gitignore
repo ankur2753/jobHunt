@@ -39,3 +39,8 @@ port_info.json
 db_dump.json
 .playwright-mcp/
 
+
+# Additional sensitive and temporary files
+cv.md
+*.html
+scratch/

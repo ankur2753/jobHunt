@@ -36,10 +36,11 @@ def get_api_key_and_provider():
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_url = os.environ.get("GEMINI_URL", f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent")
         return (
             gemini_key, 
             "gemini", 
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", 
+            gemini_url, 
             model
         )
 
@@ -104,13 +105,8 @@ async def query_llm_fallback(question: str, options: List[str] = None, profile_c
     if profile_context:
         full_context += f"--- SUPPLEMENTARY PROFILE FACTS ---\n{profile_context}\n"
 
-    prompt = f"""You are an AI career and resume assistant.
-{full_context}
----------------------------
-
-Request:
-"{question}"
-"""
+    from scripts.common_stuff.prompt_manager import load_prompt
+    prompt = load_prompt("llm_fallback_base", full_context=full_context, question=question)
 
     if options:
         prompt += f"\n[Field Type: Multiple-Choice]\nSelect one of the following exact options:\n"

@@ -72,6 +72,12 @@ class ColdOutreachGenerator:
             "Focus on direct value, technical fit, and a low-friction call to action."
         )
 
+        unslop_path = Path(__file__).resolve().parents[2] / "Instructions" / "unslop_rules.txt"
+        if unslop_path.exists():
+            unslop_rules = unslop_path.read_text(encoding="utf-8")
+            system_prompt += f"\n\nCRITICAL WRITING RULES (UNSLOP):\n{unslop_rules}\n"
+
+
         if channel == "linkedin_connection_note":
             prompt = f"""
 Draft a LinkedIn Connection Request note (STRICTLY UNDER 280 CHARACTERS).
@@ -130,7 +136,8 @@ Rules:
 """
 
         try:
-            raw_response = asyncio.run(query_llm_fallback(question=prompt, profile_context=user_context))
+            final_prompt = system_prompt + "\n" + prompt
+            raw_response = asyncio.run(query_llm_fallback(question=final_prompt, profile_context=user_context))
             if raw_response:
                 # Clean code blocks if present
                 clean_resp = raw_response.strip()
@@ -182,12 +189,12 @@ Rules:
         elif channel == "cold_email":
             return (
                 f"{role} Application / Exploration - {user_name}",
-                f"Hi {recipient_name},\n\nI hope this email finds you well. I've been following {company_name}'s recent work and am very interested in the {role} position.\n\nI build resilient backend microservices and Playwright automation frameworks. I'd love to share my resume and learn more about your team's current technical priorities.\n\nWould you be open to a quick 10-minute chat this week?\n\nBest regards,\n{user_name}",
+                f"Hi {recipient_name},\n\nI've been following {company_name}'s recent work and am very interested in the {role} position.\n\nI build resilient backend microservices and Playwright automation frameworks. I'd love to share my resume and learn more about your team's current technical priorities.\n\nWould you be open to a quick 10-minute chat this week?\n\nThanks,\n{user_name}",
             )
         elif channel == "referral_request":
             return (
                 "",
-                f"Hi {recipient_name}, hope you're having a great week! I saw an open {role} role at {company_name} and admire the team's engineering culture. If you're open to it, I'd love to share my portfolio and see if you'd be comfortable referring me. No worries either way!",
+                f"Hi {recipient_name}, I saw an open {role} role at {company_name} and admire the team's engineering culture. If you're open to it, I'd love to share my portfolio and see if you'd be comfortable referring me. No worries either way!",
             )
         else:
             return (

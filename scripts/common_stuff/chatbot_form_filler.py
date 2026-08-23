@@ -532,21 +532,11 @@ class ChatbotFormFiller:
 
                     is_cover_letter = "cover letter" in question.question_text.lower()
                     
+                    from scripts.common_stuff.prompt_manager import load_prompt
                     if is_cover_letter:
-                        prompt = (
-                            f"You are an expert job application assistant. "
-                            f"Here are my personal details:\n{details_str}\n\n"
-                            f"The application asks for a '{question.question_text}'. "
-                            f"Please write a highly professional, engaging, and tailored cover letter in raw text format. "
-                            f"Do not include markdown or generic placeholders. Just the final text."
-                        )
+                        prompt = load_prompt("chatbot_cover_letter", details_str=details_str, question_text=question.question_text)
                     else:
-                        prompt = (
-                            f"You are an expert job application assistant. "
-                            f"Here are my personal details:\n{details_str}\n\n"
-                            f"Answer the following job application question concisely: '{question.question_text}'. "
-                            f"Provide ONLY the answer text, no explanations, no markdown, just the raw string to fill in the form."
-                        )
+                        prompt = load_prompt("chatbot_general_answer", details_str=details_str, question_text=question.question_text)
                     
                     from scripts.common_stuff.custom_llm_agent import CustomLLMAgent
                     agent = CustomLLMAgent()
