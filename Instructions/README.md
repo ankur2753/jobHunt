@@ -1,10 +1,12 @@
 # Automated Job Search Agent
 
-This project is designed to automate the job search process using a combination of scripted automation and agentic support from Large Language Models (LLMs). The goal is to create a resilient system that can handle the complexities of job hunting across various platforms, while eventually evolving into a centralized hub for executing any automated work on a local machine.
+> **Recent update.** Added automatic daily resume re-uploading and 5-job batch processing for Naukri auto-applications.
 
-## Three-Layer Architecture
+This project automates the job search process using scripts and Large Language Models (LLMs). It handles job hunting across multiple platforms and will eventually run other automated tasks on a local machine.
 
-The system is built on a three-tier architecture to separate repetitive execution from logical coordination and high-level reasoning.
+## Three-layer architecture
+
+The system uses a three-tier architecture. It separates repetitive tasks from logical coordination and high-level reasoning.
 
 ```mermaid
 graph TD
@@ -15,19 +17,23 @@ graph TD
     B -.->|Requests Human Intervention| E[Telegram User]
 ```
 
-### 1. Tool Layer (Script-First)
-The primary mode of operation is through well-defined Python scripts that handle specific, repetitive tasks like web scraping, logging in, and applying for jobs. These scripts are exposed as tools using the Model Context Protocol (MCP), making them accessible to terminal programs or LLM desktops.
+### 1. Tool layer
 
-### 2. Orchestrator Layer
-The main orchestrator script handles the logical sequence of operations. It mostly uses the Tool Layer scripts to apply for jobs and perform routing. 
+Python scripts handle web scraping, logging in, and applying for jobs. The system exposes these scripts as tools using the Model Context Protocol (MCP). This makes them accessible to terminal programs or LLM desktops.
 
-### 3. Agent Layer (LLM as a Fallback)
-Agents/LLMs have access to the tools and the browser. When a script encounters an unexpected issue (e.g., a website layout change that breaks a scraper), the Orchestrator hands control over to an configured Agent (like Claude). The Agent attempts to dynamically solve the problem and then hands control back to the Orchestrator.
+### 2. Orchestrator layer
 
-### Human in the Loop
-If both the script and the LLM fail to resolve an issue, the agent will notify the user via a Telegram bot, allowing for manual intervention.
+A central script sequences operations. It calls the tool layer scripts to apply for jobs and route data.
 
-## Workflow Execution
+### 3. Agent layer
+
+Agents have access to the tools and the browser. If a script fails, the orchestrator passes control to an agent like Claude. The agent tries to solve the problem and then hands control back.
+
+### Human in the loop
+
+If both the script and the agent fail, the system pings the user via a Telegram bot for manual intervention.
+
+## Workflow execution
 
 ```mermaid
 flowchart TD
@@ -41,67 +47,67 @@ flowchart TD
     Resolve -->|No| Human[Notify User via Telegram]
 ```
 
-## Project Goal
+## Project goals
 
-The main objective is to automate the entire job search workflow:
+This project automates the entire job search workflow.
 
-* **Job Scraping:** Automatically search for and collect job postings from various online portals.
-* **Personalization:** Generate customized resumes, cover letters, and outreach messages for each application.
-* **Application Submission:** Apply for jobs on different portals.
-* **Networking:** Automate cold outreach and referral requests.
+* **Job scraping.** Searches for and collects job postings from online portals.
+* **Personalization.** Generates custom resumes, cover letters, and outreach messages for each application.
+* **Application submission.** Applies for jobs on different portals.
+* **Networking.** Automates cold outreach and referral requests.
 
-## Obsidian Knowledge Graph Navigation
+## Obsidian knowledge graph navigation
 
-- **[[PROJECT_MAP]]** — Central Knowledge Graph Index
-- **[[RESUME_TAILORING_ENGINE]]** — 1-Page A4 Resume & Cover Letter Engine, Provider-Agnostic LLM & Telegram Bot Integration
-- **[[ARCHITECTURE]]** — Three-Layer System Design & Failure Escalation
-- **[[COMPONENTS]]** — Master Script & Module Inventory
-- **[[WORKFLOWS]]** — Step-by-Step Execution Flows
-- **[[REQUIREMENTS]]** — Setup, Dependencies & Environment Config
-- **[[KNOWN_BUGS]]** — Bug Tracker & Roadmap
+- **[[PROJECT_MAP]]** Central knowledge graph index.
+- **[[RESUME_TAILORING_ENGINE]]** Resume and cover letter engine, LLM integration, and Telegram bot.
+- **[[ARCHITECTURE]]** Three-layer system design and failure escalation.
+- **[[COMPONENTS]]** Master script and module inventory.
+- **[[WORKFLOWS]]** Step-by-step execution flows.
+- **[[REQUIREMENTS]]** Setup, dependencies, and environment configuration.
+- **[[KNOWN_BUGS]]** Bug tracker and roadmap.
 
 ---
 
-## Folder Structure
+## Folder structure
 
-* `config/`: Contains configuration files, such as `requirements.txt`.
-* `docker_files/`: Holds Docker-related files for containerization.
-* `Instructions/`: Documentation for the project, including this `README.md`.
-* `personal_details/`: Stores personal user information, such as `user_details.json` and `job_prefrences.json` (legacy - being phased out).
-* `resumes/`: A directory for storing generated resumes.
-* `scripts/`: Contains all the automation scripts.
-    * `applying_to_portals/`: Scripts for applying to jobs on specific portals.
-    * `common_stuff/`: Shared utilities and functions used across different scripts, including `vector_db_manager.py` for vector database operations.
-    * `cookie_management_login/`: Scripts for managing logins and browser cookies.
-    * `getting_referals/`: Scripts for automating referral requests.
-    * `job_scraping/`: Scripts dedicated to scraping job postings.
-    * `networking/`: Scripts for networking-related tasks.
-    * `orchestrator/`: The main script that coordinates the execution of all other scripts.
-    * `personalize_resume_coverletter_msg/`: Scripts that use LLMs to generate personalized content.
-* `vector_db/`: Contains the vector database for embedded data used in Retrieval-Augmented Generation (RAG) to dynamically pull highly relevant personal context for forms and personalization, replacing static JSON files.
+* `config/` Configuration files like `requirements.txt`.
+* `docker_files/` Docker container configurations.
+* `Instructions/` Documentation.
+* `personal_details/` Legacy user information.
+* `resumes/` Generated resumes.
+* `scripts/` Automation scripts.
+    * `applying_to_portals/` Portal-specific application scripts.
+    * `common_stuff/` Shared utilities and functions, including vector database operations.
+    * `cookie_management_login/` Browser cookie and login managers.
+    * `getting_referals/` Referral request automation.
+    * `job_scraping/` Job posting scrapers.
+    * `networking/` Networking tasks.
+    * `orchestrator/` The main coordination script.
+    * `personalize_resume_coverletter_msg/` LLM integration for custom content.
+* `vector_db/` Vector database for embedded data. It replaces static JSON files and drives Retrieval-Augmented Generation (RAG) to pull relevant personal context for forms.
 
-## How it Works
+## How it works
 
-The `orchestrator` script is the entry point for the agent. It will coordinate the execution of the other scripts in the `scripts/` folder to perform the job search tasks in a logical sequence. Each script is designed to be modular and handle a specific part of the workflow.
+The `orchestrator` script is the entry point. It coordinates the execution of the other scripts in the `scripts/` directory.
 
 ## Setup
 
 1. Install dependencies: `pip install -r config/requirements.txt`
-2. Open `setup.html` in a browser and fill out your personal details and job preferences.
+2. Open `setup.html` in a browser and enter your personal details and job preferences.
 3. Save the generated Python script as `setup_data.py` in the project root.
 4. Run `python setup_data.py` to insert your details into the vector database.
 
-## Testing Naukri Auto-Apply (Phase 2+)
+## Testing Naukri auto-apply
 
-The project now includes comprehensive testing tools for the Naukri auto-apply workflow:
+The project includes testing tools for the Naukri auto-apply workflow.
 
-### Quick Test Commands
+### Quick test commands
 
 ```bash
-# Run end-to-end test (validates selectors & form detection)
+# Run end-to-end test
 python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
 
-# Test form filling with real job posting (dry-run)
+# Test form filling with real job posting
 python scripts/tests/test_real_job_posting.py --portal naukri \
   --url "https://www.naukri.com/jobs/..." --dry-run
 
@@ -110,36 +116,34 @@ python scripts/orchestrator/orchestrator.py
 # Select: 2 (Naukri) → 2 (Apply to jobs)
 ```
 
-### Key Testing Files
+### Key testing files
 
-- `scripts/tests/naukri_e2e_test.py` — End-to-end validation framework (3 stages)
-- `scripts/common_stuff/naukri_selector_discovery.py` — Selector validation utility
-- `scripts/common_stuff/retry_utils.py` — Retry logic with exponential backoff
-- `Instructions/NAUKRI_SELECTOR_ANALYSIS.md` — Detailed selector audit
-- `Instructions/NAUKRI_QUICK_REFERENCE.md` — Quick reference guide
+- `scripts/tests/naukri_e2e_test.py` End-to-end validation framework.
+- `scripts/common_stuff/naukri_selector_discovery.py` Selector validation utility.
+- `scripts/common_stuff/retry_utils.py` Retry logic with exponential backoff.
+- `Instructions/NAUKRI_SELECTOR_ANALYSIS.md` Detailed selector audit.
+- `Instructions/NAUKRI_QUICK_REFERENCE.md` Quick reference guide.
 
-### Enhancements Included
+### Enhancements included
 
-- **Multi-tier selector fallbacks** — Resilient to Naukri UI changes
-- **Selector validation** — Real-time validation reports (JSON exports)
-- **Retry logic** — Exponential backoff for transient failures
-- **Better error handling** — Improved logging and diagnostics
-- **Enhanced form validation** — Required field detection before submission
-- **NLA popup handling** — Naukri-specific popup management
+- **Multi-tier selector fallbacks.** Resilient to Naukri UI changes.
+- **Selector validation.** Real-time validation reports in JSON.
+- **Retry logic.** Exponential backoff for transient failures.
+- **Better error handling.** Improved logging and diagnostics.
+- **Enhanced form validation.** Required field detection before submission.
+- **NLA popup handling.** Naukri-specific popup management.
 
-### Test Output
+### Test output
 
-Tests generate diagnostic reports in `logs/` directory:
-- `logs/naukri_selector_validation_*.json` — Selector health status
-- `logs/naukri_e2e_test_*.json` — Full test results with stage breakdowns
+Tests generate diagnostic reports in the `logs/` directory.
+- `logs/naukri_selector_validation_*.json` Selector health status.
+- `logs/naukri_e2e_test_*.json` Full test results with stage breakdowns.
 
-## MCP Server Integration
+## MCP server integration
 
-## MCP Server Integration
+An MCP server at `scripts/orchestrator/mcp_server.py` exposes the core automation logic. LLMs like Claude Desktop can call these tools directly to check LinkedIn logins, apply to jobs, or scrape job postings.
 
-The project includes a Model Context Protocol (MCP) server located at `scripts/orchestrator/mcp_server.py`. This exposes the core automation logic (such as checking LinkedIn login, applying to jobs, and scraping jobs) as tools that can be directly invoked by an LLM (like Claude Desktop).
-
-To configure an MCP client to use this server, add the following to your client's configuration (updating the paths to match your local setup):
+To configure an MCP client, add this to your configuration and update the paths to match your local setup.
 
 ```json
 {
@@ -154,7 +158,7 @@ To configure an MCP client to use this server, add the following to your client'
 }
 ```
 
-## Future Extensions
+## Future extensions
 
-* **Knowledge Base Transition:** Moving from static `user_details.json` to a Vector Database. This will allow the LLM to search for and retrieve the most relevant skills, experiences, and project details dynamically for complex application forms.
-* **General Automation Hub:** Expanding the MCP tools in the `scripts/` directory to handle generic desktop workflows beyond job hunting, utilizing the exact same Orchestrator/Agent fallback pattern.
+* **Knowledge base transition.** Moving from static JSON to a vector database. This lets the LLM search and retrieve the most relevant skills and projects dynamically.
+* **General automation hub.** Expanding the MCP tools to handle generic desktop workflows. It will use the same orchestrator and agent fallback pattern.

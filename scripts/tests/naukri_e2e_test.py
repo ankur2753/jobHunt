@@ -223,7 +223,7 @@ class NaukriE2ETestRunner:
                     logger.info(f"  Job Title: {job_title}")
                     
                     # Check for apply button
-                    apply_button = await job_card.query_selector('button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button:has-text("Apply")')
+                    apply_button = await job_card.query_selector('button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button[data-qa="easyApplyBtn"], button:has-text("Apply"), button:has-text("Easy Apply")')
                     has_apply_button = apply_button is not None
                     
                     if has_apply_button:
@@ -300,7 +300,7 @@ class NaukriE2ETestRunner:
             # logger.debug(f"DOM Content snippet (first 1000 chars): {dom_content[:1000]}")
             
             # Try to click apply button
-            apply_button = await new_page.query_selector('button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button:has-text("Apply")')
+            apply_button = await new_page.query_selector('button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button[data-qa="easyApplyBtn"], button:has-text("Apply"), button:has-text("Easy Apply")')
             
             if apply_button:
                 logger.info("Clicking apply button...")

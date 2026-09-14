@@ -1,4 +1,4 @@
-# ARCHITECTURE — Three-Layer System Design
+# ARCHITECTURE - Three-layer system design
 
 Related: [[PROJECT_MAP]] | [[COMPONENTS]] | [[WORKFLOWS]]
 
@@ -6,13 +6,13 @@ Related: [[PROJECT_MAP]] | [[COMPONENTS]] | [[WORKFLOWS]]
 
 ## Overview
 
-The system separates concerns across three tiers so that the most reliable (scripted) path runs first, and progressively more expensive resources (LLM, human) are only invoked on failure.
+The system separates concerns across three tiers. The scripted path runs first. If it fails, the system invokes the LLM. If the LLM fails, it prompts the human user.
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │  Layer 3: Agent / LLM                               │
-│  MCP-compatible Agent (e.g., Hermes, Claude, etc.)  │
-│  Role: Dynamic problem-solving, context handover    │
+│  MCP-compatible Agent (e.g., Hermes, Claude)        │
+│  Role: Problem-solving, context handover            │
 └──────────────────────┬──────────────────────────────┘
                        │ fallback / error resolution
 ┌──────────────────────▼──────────────────────────────┐
@@ -25,7 +25,7 @@ The system separates concerns across three tiers so that the most reliable (scri
 ┌──────────────────────▼──────────────────────────────┐
 │  Layer 1: Scripts / Tools                           │
 │  Playwright automation scripts per portal           │
-│  Role: Repetitive deterministic browser actions     │
+│  Role: Repetitive browser actions                   │
 └──────────────────────┬──────────────────────────────┘
                        │ drives browser
                   Chromium Browser
@@ -34,30 +34,30 @@ The system separates concerns across three tiers so that the most reliable (scri
 
 ---
 
-## Failure Escalation Path
+## Failure escalation path
 
-```
+```text
 Script fails
     → Orchestrator retries (retry_utils.py @retry_async)
     → Still fails → Pass context to LLM Agent (via MCP)
-    → LLM resolves or applies dynamic fix
+    → LLM resolves or applies fix
     → Still fails → Notify user via Telegram bot
     → User intervenes manually
 ```
 
 ---
 
-## Layer 1 — Scripts/Tools
+## Layer 1: Scripts and tools
 
-Each script is a self-contained Playwright automation module.
+Each script is a Playwright automation module.
 
-### Key Design Principles
-- **Async-first**: all scripts use `async/await` with `playwright.async_api`
-- **Selector resilience**: multi-tier `data-qa` → CSS → text fallback chains
-- **Retry on failure**: `@retry_async` decorator from `retry_utils.py`
-- **Cookie-based auth**: sessions stored in `personal_details/*_cookies.json`
+### Key design principles
+- **Async-first**. All scripts use `async/await` with `playwright.async_api`.
+- **Selector resilience**. Multi-tier `data-qa`, CSS, and text fallback chains.
+- **Retry on failure**. `@retry_async` decorator from `retry_utils.py`.
+- **Cookie-based auth**. Sessions stored in `personal_details/*_cookies.json`.
 
-### Portal Script Map
+### Portal script map
 
 | Portal | Login | Job Scrape | Job Apply | Form Fill |
 |--------|-------|------------|-----------|-----------|
@@ -67,18 +67,18 @@ Each script is a self-contained Playwright automation module.
 
 ---
 
-## Layer 2 — Orchestrator
+## Layer 2: Orchestrator
 
 **File**: `scripts/orchestrator/orchestrator.py`
 
 ### Responsibilities
-1. Acquire/release file lock (`port_info.json`) — prevents concurrent browser instances
-2. Present CLI menu: portal selection → action selection
-3. Initialize correct portal browser manager
-4. Call layer 1 scripts in sequence
-5. Handle exceptions and surface results
+1. Acquire and release file lock (`port_info.json`). This prevents concurrent browser instances.
+2. Present CLI menu.
+3. Initialize the correct portal browser manager.
+4. Call layer 1 scripts in sequence.
+5. Handle exceptions and surface results.
 
-### Lock Mechanism
+### Lock mechanism
 ```python
 # port_info.json is used as a lock file
 # lock expires after 300 seconds (LOCK_EXPIRY)
@@ -87,23 +87,23 @@ release_lock()  # always called in finally block
 ```
 
 ### MCP Server (`mcp_server.py`)
-- Exposes core automation as MCP tools
-- Any MCP-compatible Agent (Hermes, Claude, Antigravity, etc.) can call these tools directly
+- Exposes automation as MCP tools.
+- Any MCP-compatible agent can call these tools directly.
 - Allows LLM to trigger `check_linkedin_login`, `apply_to_jobs`, etc.
 
 ---
 
-## Layer 3 — Agent / LLM
+## Layer 3: Agent and LLM
 
-**Current state**: MCP server is partially built (`mcp_server.py`). Full LLM fallback loop not yet wired.
+**Current state**: MCP server is partially built (`mcp_server.py`). Full LLM fallback loop is not yet wired.
 
-### Planned Capability
-- Receive failed-script context from Orchestrator
-- Use MCP tools + browser access to dynamically solve the issue
-- Apply fix and signal Orchestrator to resume
-- If unresolvable: trigger Telegram human-fallback
+### Planned capability
+- Receive failed-script context from orchestrator.
+- Use MCP tools and browser access to solve the issue.
+- Apply fix and signal orchestrator to resume.
+- If unresolvable, trigger Telegram human-fallback.
 
-### MCP Tools Spec (Chatbot Form Filler — Phase 4 planned)
+### MCP tools spec
 
 | Tool | Inputs | Purpose |
 |------|--------|---------|
@@ -113,11 +113,27 @@ release_lock()  # always called in finally block
 
 ---
 
-## Semantic Matching Subsystem
+## Telegram bot integration
+
+The system includes a central gateway via Telegram for interaction and notifications. It uses `redis_gateway.py` and `my-personal-tg-bot`.
+
+### Current state
+- **Bot and Redis gateway**. When a user triggers an action from the Telegram bot, `redis_gateway.py` consumes requests from the `agent.job-hunt.requests` Redis stream. It spawns the script, gathers the response, and publishes a `JOB_HUNT_RESPONSE` envelope to the `agent.job-hunt.responses` Redis stream.
+- **Draft queue**. Actions like bulk referral drafting save messages locally to `personal_details/pending_referrals.json` and `jobs_database.csv`.
+
+### Planned enhancements
+Currently, if a user manually triggers a task via the CLI, there is no automated notification pushed to the Telegram bot. To bridge CLI executions with Telegram notifications, we plan to add:
+1. **Redis notifier component**. A utility in `scripts/common_stuff/redis_notifier.py` to handle pushing `MessageEnvelope` payloads to the `agent.job-hunt.responses` Redis topic.
+2. **CLI hooks**. Scripts will invoke the Redis notifier upon job completion and construct the drafted message summary.
+3. **Graceful failback**. The notifier will wrap Redis connections in `try/except` blocks to fail silently if the Redis server or bot is not running. This ensures CLI tasks can run independently offline.
+
+---
+
+## Semantic matching subsystem
 
 The form-filling intelligence lives in `common_stuff/`:
 
-```
+```text
 chatbot_form_filler.py
     └── detect form questions (3-level: label → placeholder → aria-label)
     └── for each question:
@@ -132,7 +148,7 @@ chatbot_form_filler.py
             Playwright fills field
 ```
 
-### Confidence Thresholds
+### Confidence thresholds
 
 | Score | Action | Portal |
 |-------|--------|--------|
@@ -144,41 +160,41 @@ chatbot_form_filler.py
 
 ---
 
-## Data Architecture
+## Data architecture
 
-### Vector Database (ChromaDB)
+### Vector database (ChromaDB)
 - **Path**: `vector_db/`
 - **Collection**: Personal profile data (skills, experience, salary, preferences)
 - **Manager**: `scripts/common_stuff/vector_db_manager.py`
 - **Ingestion**: `setup_data.py` (generated from `setup.html`)
 - **Query**: `answer_question(query_text)` → `AnswerCandidate(answer, confidence, source)`
 
-### Legacy JSON (Being Phased Out)
-- `personal_details/user_details.json` — flat user profile
-- `personal_details/job_prefrences.json` — job search preferences
-- Still read by LinkedIn flow in orchestrator; Naukri uses vector DB
+### Legacy JSON (phasing out)
+- `personal_details/user_details.json` - Flat user profile
+- `personal_details/job_prefrences.json` - Job search preferences
+- LinkedIn flow in orchestrator still reads these files. Naukri uses the vector DB.
 
-### Session Storage
-- `personal_details/linkedin_cookies.json` — Playwright storage state
-- `personal_details/naukri_cookies.json` — Playwright storage state
-- `scripts/common_stuff/port_info.json` — runtime lock + WebSocket endpoint
-
----
-
-## Concurrency Model
-
-- **Single Playwright instance** per orchestrator run (enforced by lock)
-- **WebSocket endpoint** (`--remote-debugging-port=3000`) stored in `port_info.json`
-- **MCP tools** can connect to existing browser via the stored WS endpoint
-- No parallel job processing yet (sequential, one job at a time)
+### Session storage
+- `personal_details/linkedin_cookies.json` - Playwright storage state
+- `personal_details/naukri_cookies.json` - Playwright storage state
+- `scripts/common_stuff/port_info.json` - Runtime lock and WebSocket endpoint
 
 ---
 
-## Diagnostic & Observability
+## Concurrency model
+
+- **Single Playwright instance**. The system enforces one browser session at a time using a lock file.
+- **WebSocket endpoint**. Stored in `port_info.json`.
+- **MCP tools**. Tools can connect to the existing browser via the stored WS endpoint.
+- The system processes one job at a time. It does not run parallel jobs.
+
+---
+
+## Diagnostics
 
 | Output | Location | When Generated |
 |--------|----------|----------------|
 | Selector validation JSON | `logs/naukri_selector_validation_*.json` | E2E test run |
 | E2E test results JSON | `logs/naukri_e2e_test_*.json` | E2E test run |
-| Python logging | stdout + file | Runtime |
+| Python logging | stdout and file | Runtime |
 | Form session report | In-memory dict | After each form fill |

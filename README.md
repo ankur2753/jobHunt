@@ -1,37 +1,31 @@
-# Automated Job Search & Resume Tailoring Agent
+# Automated job search agent
 
-A powerful engineering platform that automates **1-page A4 ATS-optimized resume tailoring, job-specific cover letters, recruiter outreach generation, and job portal application workflows**. 
+This system automates the job hunt. It tailors a 1-page ATS-optimized resume, writes cover letters, drafts recruiter messages, and applies to jobs.
 
-Driven by a **provider-agnostic LLM engine** (Gemini, OpenAI, OpenRouter, Anthropic, or local OpenAI endpoints) and a **Playwright rendering pipeline**, it interfaces seamlessly with CLI tools, local Telegram bots, and web applications.
+It uses a provider-agnostic LLM engine and Playwright. You can run it from the CLI or a Telegram bot.
 
+```text
+Job URL / JD Text ──► Scraper & LLM ──► LLM Engine ──► Playwright PDF Renderer ──► 1-Page Resume, Cover Letter, LinkedIn DM
 ```
-Job URL / JD Text ──► Scraper & LLM Analysis ──► Provider-Agnostic LLM Engine ──► Playwright PDF Renderer ──► 1-Page A4 Resume & Cover Letter + LinkedIn DM
-```
 
----
+## Features
+- **Naukri auto-apply.** Automatically re-uploads resumes daily and processes applications in batches of five.
+- **Telegram orchestration.** The whole app runs through a local Redis gateway (`redis_gateway.py`). You trigger workflows and get PDFs sent straight to your phone on Telegram.
+- **PDF rendering.** It builds 1-page A4 resumes that fill exactly the right amount of space. No awkward half-page blanks.
+- **Visual fallback.** When basic Playwright scripts fail on complex forms, `CustomLLMAgent` takes over. It takes screenshots and uses native LLM tool calling (`click`, `type_text`, `scroll`) to navigate the page.
+- **Provider-agnostic.** Works with Gemini, OpenAI, OpenRouter, Anthropic, or local models.
+- **Human-in-the-loop.** If the LLM gets stuck or hits a 2FA prompt, it pauses the browser and messages you on Telegram for help.
+- **Scraping.** Extracts job postings from Greenhouse, Workday, Lever, and Phenom.
 
-## 🚀 Key Features
-
-*   **Telegram-First Orchestration**: The entire application runs natively via a local Redis Gateway (`redis_gateway.py`), allowing you to instantly trigger and monitor job applications, resume tailors, and LLM conversations directly from your Telegram mobile app.
-*   **1-Page A4 Executive Resume Engine**: Renders clean, ATS-compliant, single-page A4 PDFs that fill ~92% of page budget without overflow or awkward half-page whitespace.
-*   **LLM API Function Calling (Visual Fallback Cascade)**: When standard Playwright scripts fail on a complex form, the system triggers `CustomLLMAgent`. This agent takes a screenshot, extracts the DOM interactables, and explicitly uses **Native LLM Tool Calling** (`click`, `type_text`, `scroll`, `ask_user`) to autonomously navigate the page.
-*   **Provider-Agnostic LLM Core**: Supports Google Gemini, OpenAI, OpenRouter, Anthropic, or generic local/cloud endpoints.
-*   **Human-In-The-Loop (`ask_user` tool)**: If the LLM gets stuck or encounters an unexpected 2FA request, it automatically pauses the browser and pushes a direct message to your Telegram asking for guidance before continuing.
-*   **Automated Job URL Scraping**: Uses Playwright to reliably extract job postings across complex enterprise portals (Greenhouse, Workday, Lever, Phenom).
-
----
-
-## 📊 Current Portal Status
+## Portal status
 
 | Portal | Auto-Apply | Job Scraping | Login / Cookie |
 | :--- | :--- | :--- | :--- |
-| **Naukri** | ✅ Works flawlessly end-to-end | ✅ Working | ✅ Working |
-| **LinkedIn** | ⚠️ Partially Working | ❌ Broken (Anti-bot measures) | ✅ Working |
-| **InstaHyre** | ❌ Not Implemented | ❌ Not Implemented | ❌ Not Implemented |
+| **Naukri** | ✅ Working | ✅ Working | ✅ Working |
+| **LinkedIn** | ⚠️ Partial | ❌ Broken (Anti-bot) | ✅ Working |
+| **InstaHyre** | ❌ Not built | ❌ Not built | ❌ Not built |
 
----
-
-## 🤖 System Architecture
+## Architecture
 
 ```mermaid
 graph TD
@@ -58,15 +52,14 @@ graph TD
     RedisGateway -->|Upload PDF & Results| UserTelegram
 ```
 
+## Environment configuration (`.env`)
 
-## ⚙️ Environment Configuration (`.env`)
-
-Configure your preferred LLM provider in `.env`. The system is 100% provider-agnostic and will automatically select whichever API key is present:
+Set your LLM provider in `.env`. The system picks up whichever key is present.
 
 ```bash
-# Option A: Google Gemini API (Recommended Free/Fast)
+# Option A: Google Gemini API
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 
 # Option B: OpenAI API
 OPENAI_API_KEY=sk-proj-your_openai_api_key_here
@@ -76,37 +69,33 @@ OPENAI_MODEL=gpt-4o-mini
 OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key_here
 OPENROUTER_MODEL=openrouter/auto
 
-# Option D: Generic OpenAI-Compatible Endpoint (Local Ollama, vLLM, DeepSeek, Groq, etc.)
+# Option D: Local or custom endpoint
 LLM_API_KEY=your_local_or_custom_key
 LLM_BASE_URL=http://localhost:11434/v1/chat/completions
 LLM_MODEL=llama3
 ```
 
----
+## CLI usage (`cli_tailor.py`)
 
-## 💻 CLI Usage (`cli_tailor.py`)
+Run it from the terminal.
 
-Run the automation tool directly from the terminal or call it via subprocess:
-
-### 1. Tailor from Job Posting URL
+### 1. Tailor from a URL
 ```bash
 python3 scripts/cli_tailor.py \
   --url "https://www.cohesity.com/careers/open-positions/?gh_jid=ddd581b5f17d1001ebb5bcba5f6c0000&type=wd" \
   --json
 ```
 
-### 2. Tailor from Raw Job Description Text
+### 2. Tailor from raw text
 ```bash
 python3 scripts/cli_tailor.py \
   --jd-text "We are hiring a Senior QA Engineer skilled in Java, Selenium, REST API testing, and Playwright..." \
   --json
 ```
 
----
+## Output schema
 
-## 📡 JSON-RPC & API Output Schema
-
-When `--json` is supplied, `cli_tailor.py` returns structured JSON:
+When you pass `--json`, `cli_tailor.py` outputs this structure.
 
 ```json
 {
@@ -119,46 +108,40 @@ When `--json` is supplied, `cli_tailor.py` returns structured JSON:
 }
 ```
 
----
+## Telegram bot integration
 
-## 📲 Telegram Bot Integration
+The agent runs on the [`my-personal-tg-bot`](file:///home/ankurkumar/ankur_code/my-personal-tg-bot) gateway. 
 
-The job hunt agent is natively integrated with the **[`my-personal-tg-bot`](file:///home/ankurkumar/ankur_code/my-personal-tg-bot)** Universal Multi-Agent Gateway.
+Instead of a standalone script, it uses a `Procfile` deployment to handle Redis Pub/Sub.
 
-Instead of running a standalone script, the agent runs via a robust `Procfile` deployment that handles Redis Pub/Sub orchestration.
-
-### Quick Start (Production Mode)
+### Quick start
 ```bash
 # In the agent repository:
 honcho start
 ```
 
-### Interaction Flow:
-1. `honcho` automatically spins up the local Redis server, the central `my-personal-tg-bot` gateway, and the `redis_gateway.py` worker process.
-2. User sends a Job URL (e.g., `/job <url>`) to the Telegram Bot.
-3. The central gateway routes the intent via a secure `MessageEnvelope` to the `agent.job-hunt.requests` Redis Stream.
-4. `redis_gateway.py` detects the message, invokes the background CLI worker, and publishes the tailored resume PDF and LinkedIn DM back to `agent.job-hunt.responses`.
-5. The bot delivers the tailored PDF and outreach text directly to your phone.
+### Interaction flow
+1. `honcho` starts Redis, the central gateway, and the `redis_gateway.py` worker.
+2. You send `/job <url>` to the bot.
+3. The gateway routes the message to the `agent.job-hunt.requests` Redis stream.
+4. `redis_gateway.py` picks it up, runs the worker, and pushes the PDFs to `agent.job-hunt.responses`.
+5. The bot sends the files to your phone.
 
-For more information, see the `my-personal-tg-bot` central gateway repository.
+### Planned enhancements
+Right now, manual runs via `orchestrator.py` or `cli_referral.py` only output to local JSON files. We need to build a Redis notifier component. This will publish task completions straight to the Redis stream. If the bot is offline, it will fail over to local logs. Check [`Instructions/ARCHITECTURE.md`](file:///home/ankurkumar/ankur_code/agent/Instructions/ARCHITECTURE.md) for details.
 
----
+## Prompts library (`prompts/`)
 
-## 📚 Prompt Library Reference (`prompts/`)
-
-The repository includes modular prompt markdown templates located in the `prompts/` directory:
+The `prompts/` directory holds the markdown templates.
 
 | Prompt File | Description | Link |
 |---|---|---|
-| `job_analysis_prompt.md` | Extracts Must-Have, Nice-To-Have, and metadata from job text. | [`prompts/job_analysis_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/job_analysis_prompt.md) |
-| `resume_tailoring_prompt.md` | System prompt & controlled disclosure rules for 1-page A4 resume tailoring. | [`prompts/resume_tailoring_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/resume_tailoring_prompt.md) |
-| `cover_letter_prompt.md` | 1-page A4 technical cover letter generation prompt. | [`prompts/cover_letter_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/cover_letter_prompt.md) |
-| `linkedin_outreach_prompt.md` | Concise 2-3 sentence recruiter cold outreach DM prompt. | [`prompts/linkedin_outreach_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/linkedin_outreach_prompt.md) |
-| `telegram_bot_prompt.md` | System prompt and JSON-RPC protocol specs for Telegram Bot AI agents. | [`prompts/telegram_bot_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/telegram_bot_prompt.md) |
+| `job_analysis_prompt.md` | Extracts required skills and metadata. | [`prompts/job_analysis_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/job_analysis_prompt.md) |
+| `resume_tailoring_prompt.md` | Rules for tailoring a 1-page resume. | [`prompts/resume_tailoring_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/resume_tailoring_prompt.md) |
+| `cover_letter_prompt.md` | Generates a 1-page technical cover letter. | [`prompts/cover_letter_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/cover_letter_prompt.md) |
+| `linkedin_outreach_prompt.md` | Drafts a short cold DM for recruiters. | [`prompts/linkedin_outreach_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/linkedin_outreach_prompt.md) |
+| `telegram_bot_prompt.md` | Protocol specs for Telegram AI agents. | [`prompts/telegram_bot_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/telegram_bot_prompt.md) |
 
----
+## License and security
 
-## 📄 License & Open-Source Security
-
-* Personal sensitive details are maintained in `resumes/resume_master.md` and `.env` (ignored by `.gitignore`).
-* Open-source template provided in `resumes/resume_master.example.md`.
+Keep personal details in `resumes/resume_master.md` and `.env`. The `.gitignore` prevents them from uploading. We included an open-source template at `resumes/resume_master.example.md`.

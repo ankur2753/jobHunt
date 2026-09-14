@@ -79,7 +79,7 @@ class NaukriFormFiller:
         'company_name': '[data-qa="jobDetailCompany"], [data-qa="companyName"], .companyName, [data-qa="jobCardCompanyName"]',
         
         # Apply & Form
-        'apply_button': 'button.multi-apply-button, button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button:has-text("Apply")',
+        'apply_button': 'button.multi-apply-button, button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button[data-qa="easyApplyBtn"], button:has-text("Apply"), button:has-text("Easy Apply")',
         'chatbot_form_container': '.chatbot_DrawerContentWrapper',
         'form_fields': 'input, select, textarea, [role="combobox"], [role="radio"]',
         

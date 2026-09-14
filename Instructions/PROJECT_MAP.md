@@ -1,36 +1,36 @@
 # PROJECT_MAP — Automated Job Search Agent
 
-> Central knowledge graph hub. All nodes link from here.
+Index of the project documentation.
 
 ---
 
-## Graph Index
+## Graph index
 
 | Node | Description |
 |------|-------------|
-| [[RESUME_TAILORING_ENGINE]] | 1-Page A4 Resume & Cover Letter Automation, Provider-Agnostic LLM & Telegram Bot Integration |
-| [[ARCHITECTURE]] | 3-layer system design and data flow (Redis Gateway & JobTaskFactory) |
-| [[COMPONENTS]] | Every script/module with purpose and status |
-| [[WORKFLOWS]] | Step-by-step execution flows per feature (Telegram UI driven) |
+| [[RESUME_TAILORING_ENGINE]] | Resume and cover letter automation, provider-agnostic LLM, and Telegram integration |
+| [[ARCHITECTURE]] | 3-layer system design and data flow |
+| [[COMPONENTS]] | Script and module purposes and statuses |
+| [[WORKFLOWS]] | Execution flows |
 | [[REQUIREMENTS]] | Setup, dependencies, configuration |
 | [[KNOWN_BUGS]] | Active bugs, limitations, future work |
 | [[CLAUDE]] | Claude Code entry point and quick-start |
 
 ---
 
-## Project Goal
+## Project goal
 
-Automate the full job search lifecycle:
+Automate the job search process:
 
 ```text
 Telegram Command → Scrape Jobs → Tailor Resume → Personalize Application → Apply (CustomLLMAgent fallback)
 ```
 
-All steps run via scripts first; `CustomLLMAgent` with Native Function Calling (click, type_text, scroll, ask_user) takes over when scripts fail.
+Scripts handle the initial steps. If scripts fail, `CustomLLMAgent` uses native function calling (click, type_text, scroll, ask_user) to complete the task.
 
 ---
 
-## Repository Structure
+## Repository structure
 
 ```text
 agent/
@@ -49,10 +49,10 @@ agent/
 ├── prompts/
 ├── resumes/
 ├── scripts/
-│   ├── redis_gateway.py          # Main Entry Point via Redis & JobTaskFactory
+│   ├── redis_gateway.py          # Main entry point
 │   ├── cli_tailor.py
 │   ├── common_stuff/
-│   │   ├── llm_fallback.py       # CustomLLMAgent (click, type_text, scroll, ask_user)
+│   │   ├── llm_fallback.py       # CustomLLMAgent tools
 │   │   ├── chatbot_form_filler.py
 │   │   └── vector_db_manager.py
 │   ├── cookie_management_login/
@@ -65,33 +65,33 @@ agent/
 
 ---
 
-## Feature Status Matrix
+## Feature status matrix
 
 | Feature | LinkedIn | Naukri | InstaHyre |
 |---------|----------|--------|-----------|
-| Cookie Login | ✅ | ✅ | ❌ |
-| Manual Login Fallback | ✅ | ✅ | ❌ |
-| Job Scraping | ❌ FAILED (Anti-Bot) | ✅ | ❌ |
-| Auto Apply | ❌ FAILED | ✅ | ❌ |
-| Form Fill (Chatbot) | ❌ | ✅ | ❌ |
-| Visual LLM Fallback | ❌ | ✅ | ❌ |
-| Telegram UI Gateway | ❌ | ✅ | ❌ |
-| E2E Tests | ❌ | ✅ | ❌ |
+| Cookie login | ✅ | ✅ | ❌ |
+| Manual login fallback | ✅ | ✅ | ❌ |
+| Job scraping | ✅ | ✅ | ❌ |
+| Auto apply | ❌ FAILED | ✅ | ❌ |
+| Form fill (chatbot) | ❌ | ✅ | ❌ |
+| Visual LLM fallback | ❌ | ✅ | ❌ |
+| Telegram UI gateway | ❌ | ✅ | ❌ |
+| E2E tests | ❌ | ✅ | ❌ |
 
 ---
 
-## Implementation Phases (Naukri Focus)
+## Implementation phases (Naukri focus)
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 1-6 | Selectors, Logging, Error Handling, Retries | ✅ Done |
-| Phase 7 | Multi-step Form Navigation | ✅ Done |
-| Phase 8 | Telegram UI (First-Class Citizen) via Redis | ✅ Done |
-| Phase 9 | CustomLLMAgent Visual Fallback (Native Tools) | ✅ Done |
+| Phase 1-6 | Selectors, logging, error handling, retries | ✅ Done |
+| Phase 7 | Multi-step form navigation | ✅ Done |
+| Phase 8 | Telegram UI via Redis | ✅ Done |
+| Phase 9 | CustomLLMAgent visual fallback | ✅ Done |
 
 ---
 
-## Data Flow & Knowledge Architecture
+## Data flow and architecture
 
 ```text
 Telegram UI (User Request) 
@@ -110,12 +110,12 @@ orchestrator / scripts → Naukri Apply Flow
 
 ---
 
-## External Integrations
+## External integrations
 
 | Service | Purpose | Status |
 |---------|---------|--------|
 | Playwright (Chromium) | Browser automation | ✅ Active |
-| Redis | Task queuing and Gateway | ✅ Active |
-| Telegram Bot | First-class UI / Human fallback | ✅ Active |
-| CustomLLMAgent | Visual fallback with tool calling | ✅ Active |
+| Redis | Task queuing and gateway | ✅ Active |
+| Telegram Bot | UI and human fallback | ✅ Active |
+| CustomLLMAgent | Visual fallback | ✅ Active |
 | ChromaDB | Vector store | ✅ Active |

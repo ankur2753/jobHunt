@@ -1,22 +1,22 @@
-# WORKFLOWS — Execution Flows
+# WORKFLOWS - Execution flows
 
 Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[COMPONENTS]]
 
 ---
 
-## Workflow 1: Initial Setup
+## Workflow 1: Initial setup
 
-One-time setup before any automation can run.
+Run this once before starting automation.
 
-```
+```text
 1. Install dependencies
    pip install -r config/requirements.txt
    playwright install chromium
 
 2. Fill personal profile
    → Open setup.html in browser
-   → Complete all fields (name, skills, experience, salary, etc.)
-   → Click "Generate Script" → saves setup_data.py
+   → Complete all fields (name, skills, experience, salary)
+   → Click "Generate Script" (saves setup_data.py)
 
 3. Populate vector database
    python setup_data.py
@@ -27,84 +27,83 @@ One-time setup before any automation can run.
    → Select portal → Log in manually → Cookies auto-saved
 ```
 
-## Workflow 5: 1-Page A4 Resume & Cover Letter Tailoring ([[RESUME_TAILORING_ENGINE]])
+## Workflow 2: Resume and cover letter tailoring
 
-```
+```text
 User (Telegram Chat or CLI)
   → Send Job URL or Job Description Text
         ↓
   scripts/cli_tailor.py --url "<URL>" --json (or --jd-text)
         ↓
-  1. Playwright Scraping: DOM innerText extraction (domcontentloaded + 3s render delay)
+  1. Playwright Scraping: DOM innerText extraction
         ↓
-  2. Provider-Agnostic LLM Query (llm_fallback.py):
+  2. Provider-agnostic LLM query (llm_fallback.py):
      - Checks GEMINI_API_KEY -> OPENAI_API_KEY -> OPENROUTER_API_KEY -> LLM_API_KEY
-     - Extracts Must Have / Nice To Have skills
-     - Tailors master resume bullets (Senior QA Engineer + GET + Deloitte + 2 Projects)
+     - Extracts requirements
+     - Tailors master resume bullets
      - Formats 1-page A4 executive HTML
         ↓
   3. Playwright PDF Engine:
-     - Applies A4 page budget CSS (9.5pt font, 1.42 line height, 14px section margin)
-     - Renders Ankur_Kumar_[Company]_Resume.pdf (~92% page height)
+     - Applies A4 page budget CSS
+     - Renders Ankur_Kumar_[Company]_Resume.pdf
      - Renders Ankur_Kumar_[Company]_Cover_Letter.pdf
         ↓
-  4. Returns JSON Schema Output:
+  4. Returns JSON Schema output:
      - status: "success"
      - resume_pdf: path to Resume PDF
      - cover_letter_pdf: path to Cover Letter PDF
      - linkedin_dm: recruiter outreach message text
         ↓
-  5. Telegram Bot Handler (telegram_bot_sample.py):
-     - Uploads Resume & Cover Letter PDF documents into Telegram chat
+  5. Telegram bot handler (telegram_bot_sample.py):
+     - Uploads PDF documents into Telegram chat
      - Sends LinkedIn DM message
 ```
 
 ---
 
-## Workflow 2: Naukri Auto-Apply (Primary Flow)
+## Workflow 3: Naukri auto-apply
 
-```
+```text
 python scripts/orchestrator/orchestrator.py
   → Select: 2 (Naukri)
-  → Checks cookie login → auto-login or prompt manual
+  → Checks cookie login
   → Select: 2 (Apply on job portals)
-  → Enter max_jobs (default: 5)
+  → Enter max_jobs
 
-  ┌─ NaukriJobApply.apply_to_recommended_jobs(max_jobs) ─┐
-  │                                                       │
-  │  Navigate to /mnjuser/recommendedjobs                 │
-  │  → SelectorValidator validates page selectors         │
-  │  → Collect job cards [data-qa="jobTuple"]             │
-  │                                                       │
-  │  For each job card:                                   │
-  │    → Extract job title, URL                           │
-  │    → @retry_async: find & click apply button          │
-  │    → Wait for form to load (20s timeout)              │
-  │    → Init NaukriFormFiller                            │
-  │         → _close_nla_popups()                        │
-  │         → ChatbotFormFiller.detect_questions()        │
-  │         → For each question:                          │
-  │              VectorDBManager.answer_question()        │
-  │              If confidence >= 0.70: auto-fill         │
-  │              If confidence < 0.70: prompt user        │
-  │         → AnswerValidators.normalize(answer)          │
-  │         → Playwright fills field                      │
-  │         → _submit_form() (multi-tier button detect)   │
-  │                                                       │
-  │  Return results dict                                  │
-  └───────────────────────────────────────────────────────┘
+  NaukriJobApply.apply_to_recommended_jobs(max_jobs)
+  
+  Navigate to /mnjuser/recommendedjobs
+  → SelectorValidator validates page selectors
+  → Collect job cards [data-qa="jobTuple"]
+  
+  For each job card:
+    → Extract job title, URL
+    → Click apply button
+    → Wait for form to load
+    → Init NaukriFormFiller
+         → _close_nla_popups()
+         → ChatbotFormFiller.detect_questions()
+         → For each question:
+              VectorDBManager.answer_question()
+              If confidence >= 0.70: auto-fill
+              If confidence < 0.70: prompt user
+         → AnswerValidators.normalize(answer)
+         → Playwright fills field
+         → _submit_form()
+  
+  Return results dict
 
-  Print summary: total_attempted, successful, failed, skipped
+  Print summary
 ```
 
 ---
 
-## Workflow 3: LinkedIn Auto-Apply
+## Workflow 4: LinkedIn auto-apply
 
-```
+```text
 python scripts/orchestrator/orchestrator.py
   → Select: 1 (LinkedIn)
-  → Checks cookie login → auto-login or prompt manual
+  → Checks cookie login
   → Select: 2 (Apply on job portals)
   → Enter job title, location, max_applications
 
@@ -114,23 +113,23 @@ python scripts/orchestrator/orchestrator.py
   → Click and fill forms
   → Submit
 
-  ⚠️ Status: Partial — see [[KNOWN_BUGS]] BUG-002
+  Status: Partial. See BUG-002 in [[KNOWN_BUGS]].
 ```
 
 ---
 
-## Workflow 4: Form Fill Only (Direct URL)
+## Workflow 5: Form fill only (direct URL)
 
-Use this when you have a specific job URL and want to fill only the form.
+Use this for specific job URLs to only fill the form.
 
-```
+```text
 python scripts/orchestrator/orchestrator.py
   → Select portal (1=LinkedIn or 2=Naukri)
   → Select: 4 (Auto-fill forms)
   → Paste job URL
   → Select mode:
        1 = Dry-run (detect questions, no fill)
-       2 = Auto-fill with human fallback (recommended)
+       2 = Auto-fill with human fallback
        3 = Auto-fill and submit
 
 OR via test script:
@@ -142,14 +141,14 @@ OR via test script:
 
 ---
 
-## Workflow 5: LinkedIn Cold Messaging
+## Workflow 6: LinkedIn cold messaging
 
-```
+```text
 python scripts/orchestrator/orchestrator.py
   → Select: 1 (LinkedIn)
   → Select: 1 (Send cold messages)
   → Paste LinkedIn profile URLs (comma-separated)
-  → Enter outreach context/reason
+  → Enter outreach context
 
   LinkedInColdMessenger.send_bulk_outreach(profile_urls, reason)
   → Navigate to each profile
@@ -160,9 +159,9 @@ python scripts/orchestrator/orchestrator.py
 
 ---
 
-## Workflow 6: Job Scraping (LinkedIn)
+## Workflow 7: Job scraping (LinkedIn)
 
-```
+```text
 python scripts/orchestrator/orchestrator.py
   → Select: 1 (LinkedIn)
   → Select: 3 (Scrape jobs posted in last 24 hours)
@@ -173,14 +172,14 @@ python scripts/orchestrator/orchestrator.py
   → Filters by date (last 24h)
   → Returns list of job postings
 
-  ⚠️ Status: Broken — see [[KNOWN_BUGS]] BUG-001
+  Status: Broken. See BUG-001 in [[KNOWN_BUGS]].
 ```
 
 ---
 
-## Workflow 7: E2E Test / Selector Validation
+## Workflow 8: E2E test and selector validation
 
-For debugging selector failures before a live run.
+Use this to debug selector failures before a live run.
 
 ```bash
 # Stage 1-3: Full Naukri flow validation
@@ -200,9 +199,9 @@ python -m pytest scripts/tests/test_form_filling.py -v         # 10 tests
 
 ---
 
-## Workflow 8: Add New Personal Data to Vector DB
+## Workflow 9: Add new personal data to vector DB
 
-When you want the system to learn a new answer (e.g., updated salary expectation).
+Update the system with new answers (e.g., updated salary expectation).
 
 ```python
 # Option A: Via vector_db_manager directly
@@ -214,7 +213,7 @@ db.add_answer(
     category="salary"
 )
 
-# Option B: Via MCP tool (when implemented)
+# Option B: Via MCP tool
 # answer_chatbot_question_manual(question, answer, category, store_for_future=True)
 
 # Option C: Re-run setup
@@ -223,9 +222,9 @@ db.add_answer(
 
 ---
 
-## Confidence Threshold Decision Tree
+## Confidence threshold decision tree
 
-```
+```text
 Question detected
     ↓
 VectorDB.answer_question(question)
@@ -246,9 +245,9 @@ confidence < 0.50?
 
 ---
 
-## MCP Tool Invocation Flow (Claude Desktop)
+## MCP tool invocation flow (Claude Desktop)
 
-```
+```text
 User asks Claude Desktop to apply to a job
     ↓
 Claude calls MCP tool: apply_to_naukri_jobs(max_jobs=3)

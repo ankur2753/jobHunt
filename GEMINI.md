@@ -1,14 +1,13 @@
-# Security Rule: API Keys & Secrets
+# Security rule: API keys and secrets
 
-**NEVER** print, output, or include raw API keys, secrets, or passwords in tool call arguments (such as `replace_file_content`, `run_command`, etc.) or in chat responses. 
+Never print, output, or include raw API keys, secrets, or passwords in tool call arguments or in chat responses. 
 
-If you need to update a file that contains secrets (like a `.env` file), you must handle it carefully. Do not use `replace_file_content` or `write_to_file` to pass the raw key in the tool arguments, as this logs the key in the conversation transcript. 
+If you need to update a file that contains secrets, handle it carefully. Do not use file replacement tools to pass the raw key in the tool arguments. This logs the key in the conversation transcript. 
 
 Instead:
 1. Instruct the user to manually update the secret values.
-2. Or, if you must edit the file, only edit the non-secret parts of the file, leaving placeholders like `YOUR_KEY_HERE` for the secrets.
+2. If you must edit the file, only edit the non-secret parts. Leave placeholders like `YOUR_KEY_HERE` for the secrets.
 
+# Common failures 
 
-# common Filures 
-
-- use Venv to run this project
+- Use a virtual environment to run this project.

@@ -59,6 +59,41 @@ def shorten_company_name(name: str) -> str:
     return name
 
 
+def format_referrals_to_markdown(entries: list, title: str = "Drafted Referral Messages") -> str:
+    """
+    Pure function to transform a list of referral JSON entries into a formatted markdown string.
+    """
+    if not entries:
+        return "Processed jobs, but could not find suitable referral candidates to draft messages for."
+        
+    response_text = f"🎯 *{title}*\n\n"
+    found_drafts = False
+    
+    for entry in entries:
+        company = entry.get('company_name', 'Unknown')
+        job_title = entry.get('job_title', '')
+        candidates = entry.get('candidates', [])
+        
+        if candidates:
+            found_drafts = True
+            header = f"🏢 *{company}*"
+            if job_title:
+                header += f" ({job_title})"
+            response_text += f"{header}\n"
+            
+            for idx, cand in enumerate(candidates, 1):
+                name = cand.get("name", "Unknown")
+                profile_url = cand.get("profile_url", "#")
+                draft = cand.get("drafted_message", "")
+                response_text += f"*{idx}. [{name}]({profile_url})*\n```text\n{draft}\n```\n"
+            response_text += "\n"
+            
+    if not found_drafts:
+        return "Processed jobs, but could not find suitable referral candidates to draft messages for."
+        
+    return response_text
+
+
 def shorten_job_title(title: str) -> str:
     """
     Shorten job titles to look natural in conversational outreach.

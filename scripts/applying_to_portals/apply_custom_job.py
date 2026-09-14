@@ -156,8 +156,8 @@ async def apply_to_custom_url(
             from scripts.common_stuff.custom_llm_agent import CustomLLMAgent
             import os
             
-            fast_model = os.getenv("FAST_MODEL", "gemini-1.5-flash")
-            expensive_model = os.getenv("EXPENSIVE_MODEL", "gemini-1.5-pro")
+            fast_model = os.getenv("FAST_MODEL", "gemini-3.6-flash")
+            expensive_model = os.getenv("EXPENSIVE_MODEL", "gemini-3.6-pro")
             
             from scripts.common_stuff.prompt_manager import load_prompt
             prompt = load_prompt("apply_custom_job_agent")

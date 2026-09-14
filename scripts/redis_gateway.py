@@ -222,11 +222,167 @@ class ApplyTask(BaseTask):
             logger.error(f"Failed to execute worker: {e}")
             return {"status": "error", "message": str(e)}
 
+class ProcessPendingReferralsTask(BaseTask):
+    async def execute(self):
+        logger.info(f"Processing ALL pending referrals for user {self.user_id}")
+        
+        try:
+            if str(PROJECT_ROOT) not in sys.path:
+                sys.path.insert(0, str(PROJECT_ROOT))
+            from scripts.networking.linkedin_referral_helper import LinkedInReferralHelper
+            from scripts.orchestrator.orchestrator import LinkedInPlaywright
+            
+            browser_manager = LinkedInPlaywright()
+            await browser_manager.setup_driver(headless=False)
+            
+            helper = LinkedInReferralHelper(browser_manager.page)
+            await helper.process_jobs(5)
+            
+            if browser_manager.browser:
+                await browser_manager.browser.close()
+            
+            # Read the latest drafts from JSON
+            json_path = PROJECT_ROOT / "personal_details" / "pending_referrals.json"
+            recent_entries = []
+            if json_path.exists():
+                import json
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    recent_entries = data[-5:] if isinstance(data, list) else []
+            
+            # Format using pure function
+            from scripts.networking.linkedin_referral_helper import format_referrals_to_markdown
+            markdown_text = format_referrals_to_markdown(recent_entries, title="Drafted Referral Messages")
+            
+            # Write to file to maintain loose coupling
+            md_path = PROJECT_ROOT / "logs" / "latest_referral_drafts.md"
+            md_path.parent.mkdir(exist_ok=True)
+            with open(md_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_text)
+                
+            logger.info(f"Saved referral drafts markdown to {md_path}")
+            
+            return {"status": "SUCCESS", "linkedin_dm": markdown_text, "md_path": str(md_path)}
+        except Exception as e:
+            logger.error(f"ProcessPendingReferralsTask failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+
+class ScrapeJobsTask(BaseTask):
+    async def execute(self):
+        logger.info(f"Scraping jobs for user {self.user_id}")
+        
+        try:
+            if str(PROJECT_ROOT) not in sys.path:
+                sys.path.insert(0, str(PROJECT_ROOT))
+            from scripts.job_scraping.linkedin_job_scraper import LinkedInJobScraper
+            from scripts.orchestrator.orchestrator import LinkedInPlaywright
+            
+            jd_text = self.jd_text.strip()
+            job_title = "Software Engineer"
+            location = "Remote"
+            
+            if "|" in jd_text:
+                parts = [p.strip() for p in jd_text.split("|")]
+                if len(parts) >= 1 and parts[0]:
+                    job_title = parts[0]
+                if len(parts) >= 2 and parts[1]:
+                    location = parts[1]
+            elif jd_text:
+                job_title = jd_text
+                
+            browser_manager = LinkedInPlaywright()
+            await browser_manager.setup_driver(headless=False)
+            
+            scraper = LinkedInJobScraper(browser_manager.page, job_title, location)
+            await scraper.scrape_jobs()
+            
+            if browser_manager.browser:
+                await browser_manager.browser.close()
+            
+            return {"status": "SUCCESS", "linkedin_dm": f"Successfully scraped LinkedIn jobs for '{job_title}' in '{location}'!"}
+        except Exception as e:
+            logger.error(f"ScrapeJobsTask failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+
+class ScrapeAndDraftTask(BaseTask):
+    async def execute(self):
+        logger.info(f"Scraping and drafting for user {self.user_id}")
+        
+        try:
+            if str(PROJECT_ROOT) not in sys.path:
+                sys.path.insert(0, str(PROJECT_ROOT))
+            from scripts.job_scraping.linkedin_job_scraper import LinkedInJobScraper
+            from scripts.networking.linkedin_referral_helper import LinkedInReferralHelper
+            from scripts.orchestrator.orchestrator import LinkedInPlaywright
+            
+            jd_text = self.jd_text.strip()
+            job_title = "Software Engineer"
+            location = "Remote"
+            
+            if "|" in jd_text:
+                parts = [p.strip() for p in jd_text.split("|")]
+                if len(parts) >= 1 and parts[0]:
+                    job_title = parts[0]
+                if len(parts) >= 2 and parts[1]:
+                    location = parts[1]
+            elif jd_text:
+                job_title = jd_text
+                
+            browser_manager = LinkedInPlaywright()
+            await browser_manager.setup_driver(headless=False)
+            
+            # Step 1: Scrape
+            scraper = LinkedInJobScraper(browser_manager.page, job_title, location)
+            await scraper.scrape_jobs()
+            
+            # Step 2: Process Pending Referrals (up to 3 to keep it relatively quick)
+            helper = LinkedInReferralHelper(browser_manager.page)
+            await helper.process_jobs(3)
+            
+            if browser_manager.browser:
+                await browser_manager.browser.close()
+                
+            # Step 3: Format the response from pending_referrals.json
+            json_path = PROJECT_ROOT / "personal_details" / "pending_referrals.json"
+            recent_entries = []
+            
+            if json_path.exists():
+                import json
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    recent_entries = data[-3:] if isinstance(data, list) else []
+                    
+            from scripts.networking.linkedin_referral_helper import format_referrals_to_markdown
+            markdown_text = format_referrals_to_markdown(recent_entries, title=f"Referrals Drafted for {job_title}")
+            
+            if "Processed jobs, but could not find suitable" in markdown_text:
+                markdown_text = "Scraped jobs, but could not find suitable referral candidates to draft messages for."
+            
+            # Write to file to maintain loose coupling
+            md_path = PROJECT_ROOT / "logs" / "latest_referral_drafts.md"
+            md_path.parent.mkdir(exist_ok=True)
+            with open(md_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_text)
+                
+            return {"status": "SUCCESS", "linkedin_dm": markdown_text, "md_path": str(md_path)}
+        except Exception as e:
+            logger.error(f"ScrapeAndDraftTask failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+
 class JobTaskFactory:
     @staticmethod
     def create_task(action: str, payload: dict, envelope_json: dict) -> BaseTask:
         if action == "SEEK_REFERRAL":
             return ReferralTask(payload, envelope_json)
+        elif action == "PROCESS_PENDING_REFERRALS":
+            return ProcessPendingReferralsTask(payload, envelope_json)
+        elif action == "SCRAPE_JOBS":
+            return ScrapeJobsTask(payload, envelope_json)
+        elif action == "SCRAPE_AND_DRAFT":
+            return ScrapeAndDraftTask(payload, envelope_json)
         return ApplyTask(payload, envelope_json)
 
 async def main():
@@ -275,6 +431,7 @@ async def main():
                         "status": result.get("status", "SUCCESS").upper() if result.get("status") else "SUCCESS",
                         "pdf_path": result.get("resume_pdf"),
                         "generated_text": result.get("linkedin_dm"),
+                        "md_path": result.get("md_path"),
                         "error_message": result.get("error") or result.get("error_message")
                     }
                     

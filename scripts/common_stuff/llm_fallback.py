@@ -35,7 +35,7 @@ def get_api_key_and_provider():
     # 2. Gemini API
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
-        model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
         gemini_url = os.environ.get("GEMINI_URL", f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent")
         return (
             gemini_key, 
@@ -116,64 +116,70 @@ async def query_llm_fallback(question: str, options: List[str] = None, profile_c
     else:
         prompt += f"\nProvide a direct, high-quality answer. Return ONLY the final output.\n"
 
-    try:
-        if provider == "gemini":
-            url = f"{api_url}?key={api_key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.2}
-            }
-            response = requests.post(url, headers=headers, json=payload, timeout=20)
-            response.raise_for_status()
-            res_data = response.json()
-            answer = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    import time
+    for attempt in range(3):
+        try:
+            if provider == "gemini":
+                url = f"{api_url}?key={api_key}"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.2}
+                }
+                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                response.raise_for_status()
+                res_data = response.json()
+                answer = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-        elif provider in ("openai", "openrouter", "openai_compatible"):
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
-            if provider == "openrouter":
-                headers["HTTP-Referer"] = os.getenv("GITHUB_REPO_URL", "https://github.com/job-hunt-agent")
-                headers["X-Title"] = "Resume Tailor Agent"
-                
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2
-            }
-            response = requests.post(api_url, headers=headers, json=payload, timeout=20)
-            response.raise_for_status()
-            res_data = response.json()
-            answer = res_data["choices"][0]["message"]["content"].strip()
+            elif provider in ("openai", "openrouter", "openai_compatible"):
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                if provider == "openrouter":
+                    headers["HTTP-Referer"] = os.getenv("GITHUB_REPO_URL", "https://github.com/job-hunt-agent")
+                    headers["X-Title"] = "Resume Tailor Agent"
+                    
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2
+                }
+                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+                response.raise_for_status()
+                res_data = response.json()
+                answer = res_data["choices"][0]["message"]["content"].strip()
 
-        elif provider == "anthropic":
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": model,
-                "max_tokens": 1500,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2
-            }
-            response = requests.post(api_url, headers=headers, json=payload, timeout=20)
-            response.raise_for_status()
-            res_data = response.json()
-            answer = res_data["content"][0]["text"].strip()
+            elif provider == "anthropic":
+                headers = {
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                }
+                payload = {
+                    "model": model,
+                    "max_tokens": 1500,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2
+                }
+                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+                response.raise_for_status()
+                res_data = response.json()
+                answer = res_data["content"][0]["text"].strip()
 
-        # Clean wrapping quotes if present
-        if answer.startswith('"') and answer.endswith('"'):
-            answer = answer[1:-1].strip()
-        if answer.startswith("'") and answer.endswith("'"):
-            answer = answer[1:-1].strip()
+            # Clean wrapping quotes if present
+            if answer.startswith('"') and answer.endswith('"'):
+                answer = answer[1:-1].strip()
+            if answer.startswith("'") and answer.endswith("'"):
+                answer = answer[1:-1].strip()
 
-        logger.info(f"🤖 LLM Answer received successfully ({len(answer)} chars)")
-        return answer
+            logger.info(f"🤖 LLM Answer received successfully ({len(answer)} chars)")
+            return answer
 
-    except Exception as e:
-        logger.error(f"❌ LLM API call failed ({provider}): {e}")
-        return None
+        except Exception as e:
+            logger.warning(f"⚠️ LLM API call failed on attempt {attempt+1}/3 ({provider}): {e}")
+            if attempt < 2:
+                time.sleep(2 ** attempt)  # simple exponential backoff
+            else:
+                logger.error(f"❌ All LLM API call attempts failed ({provider}).")
+                return None

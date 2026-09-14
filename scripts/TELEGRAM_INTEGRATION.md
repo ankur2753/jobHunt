@@ -1,33 +1,30 @@
-# Telegram Bot & RPC Integration Protocol
+# Telegram Bot and RPC Integration Protocol
 
-This document specifies the complete **JSON-RPC protocol, CLI command contract, error handling standards, and Telegram Bot integration guidelines** for automating 1-page A4 Resume PDF, Cover Letter PDF, and LinkedIn Cold Outreach DM generation.
+This document covers the JSON-RPC protocol, CLI commands, error handling, and Telegram Bot integration for generating resumes, cover letters, and LinkedIn outreach messages.
 
 ---
 
-## 1. RPC & CLI Interface Protocol
+## 1. RPC and CLI interface protocol
 
-The automation engine entrypoint is located at:
-```
-/home/ankurkumar/ankur_code/agent/scripts/cli_tailor.py
-```
+The automation engine entrypoint is `cli_tailor.py`.
 
-### Execution Schema
+### Execution schema
 
-#### A. From Job Posting URL
+#### A. From job posting URL
 ```bash
 python3 /home/ankurkumar/ankur_code/agent/scripts/cli_tailor.py \
   --url "https://company.com/job/123" \
   --json
 ```
 
-#### B. From Raw Job Description Text
+#### B. From raw job description text
 ```bash
 python3 /home/ankurkumar/ankur_code/agent/scripts/cli_tailor.py \
   --jd-text "We are hiring a Senior QA Engineer skilled in Java, Selenium, REST API testing, and Playwright..." \
   --json
 ```
 
-#### C. With Company & Role Overrides
+#### C. With company and role overrides
 ```bash
 python3 /home/ankurkumar/ankur_code/agent/scripts/cli_tailor.py \
   --url "https://company.com/job/123" \
@@ -38,11 +35,11 @@ python3 /home/ankurkumar/ankur_code/agent/scripts/cli_tailor.py \
 
 ---
 
-## 2. JSON Response Contract
+## 2. JSON response contract
 
-When `--json` is supplied, `cli_tailor.py` outputs a structured JSON string to `stdout`:
+When `--json` is supplied, `cli_tailor.py` outputs a structured JSON string to `stdout`.
 
-### Success Payload Schema
+### Success payload schema
 ```json
 {
   "status": "success",
@@ -54,7 +51,7 @@ When `--json` is supplied, `cli_tailor.py` outputs a structured JSON string to `
 }
 ```
 
-### Error Payload Schema
+### Error payload schema
 ```json
 {
   "status": "error",
@@ -64,9 +61,9 @@ When `--json` is supplied, `cli_tailor.py` outputs a structured JSON string to `
 
 ---
 
-## 3. Telegram Bot Handler Implementation
+## 3. Telegram bot handler implementation
 
-Your Telegram bot (running as a separate service on this machine) invokes `cli_tailor.py` using `subprocess.run()`:
+Your Telegram bot runs as a separate service on this machine and invokes `cli_tailor.py` using `subprocess.run()`.
 
 ```python
 import sys
@@ -128,13 +125,13 @@ async def handle_job_request(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 ---
 
-## 4. Prompts & LLM Provider Configuration
+## 4. Prompts and LLM provider configuration
 
-The underlying LLM provider can be swapped at any time by configuring `.env`:
+The underlying LLM provider can be swapped at any time by configuring `.env`.
 - `GEMINI_API_KEY`: Google Gemini
 - `OPENAI_API_KEY`: OpenAI GPT models
 - `OPENROUTER_API_KEY`: OpenRouter
-- `LLM_API_KEY` + `LLM_BASE_URL`: Local Ollama / vLLM / Groq endpoints
+- `LLM_API_KEY` + `LLM_BASE_URL`: Local Ollama, vLLM, or Groq endpoints
 
 For prompt templates, see:
 - [`prompts/telegram_bot_prompt.md`](file:///home/ankurkumar/ankur_code/agent/prompts/telegram_bot_prompt.md)

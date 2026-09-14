@@ -1,6 +1,6 @@
 # Job Hunting System Architecture
 
-This document contains the unified UML diagram for the automated job hunting system, detailing how the different Python modules, LLM integrations, and `career-ops` plugins interact.
+This diagram shows how the automated job hunting system fits together. It maps out the Python modules, LLMs, and `career-ops` plugins.
 
 ## System Architecture (Mermaid UML)
 
@@ -68,16 +68,17 @@ graph TD
     end
 ```
 
-## Subsystem Details
+## Subsystems
 
-### 1. Job Portals Automation
-Scripts in `applying_to_portals/` and `job_scraping/` handle the automated interaction with job boards like Naukri and LinkedIn. They pull candidate context from the `VectorDBManager` to dynamically answer form questions.
+### 1. Job portals
+The `applying_to_portals/` and `job_scraping/` scripts handle Naukri and LinkedIn. They use `VectorDBManager` to pull context and answer form questions. I built it this way so the forms don't just get generic answers—they actually read the candidate's history.
 
-### 2. Networking and Cold Outreach
-Scripts in `networking/` automate LinkedIn messaging, connection requests, and referral hunting.
-- `linkedin_referral_helper.py`: Scans `jobs_database.csv`, discovers potential employees to ask for referrals, scores them, and drafts customized networking messages.
-- `linkedin_cold_message.py`: Connects with recruiters and engineers, appending an AI-drafted introduction.
-- Both rely heavily on `ColdOutreachGenerator`, which queries the LLM and strictly adheres to the `unslop_rules.txt` constraints to maintain a natural, human tone.
+### 2. Networking and cold outreach
+The `networking/` scripts automate LinkedIn. They send connection requests and hunt for referrals.
+- `linkedin_referral_helper.py` scans `jobs_database.csv`, finds people to ask for referrals, and drafts messages.
+- `linkedin_cold_message.py` connects with recruiters and engineers. It appends an AI-drafted introduction.
 
-### 3. Career-Ops Plugin
-The `career-ops` tool is an independent markdown-based agent framework that handles drafting cover letters, generating resumes, and writing emails. It has been integrated into the ecosystem by sharing the `unslop` principles via its local `modes/_custom.md` hook.
+Both scripts use `ColdOutreachGenerator`. This hits the LLM and applies `unslop_rules.txt`. It's critical to strip out the usual AI fluff here, otherwise recruiters spot the automation immediately.
+
+### 3. Career-Ops plugin
+`career-ops` is an independent agent framework that drafts cover letters, resumes, and emails. It hooks into the main system through `modes/_custom.md` so it shares the same unslop rules.

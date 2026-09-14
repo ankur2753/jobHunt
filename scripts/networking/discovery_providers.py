@@ -121,14 +121,12 @@ class LinkedInSearchDiscoveryProvider(BaseDiscoveryProvider):
                 if href in seen_urls or "/in/ACoAA" in href or "linkedin.com/in/search" in href:
                     continue
                 
-                text = await link.text_content()
+                text = (await link.inner_text()).strip()
                 if not text:
                     continue
-                text = text.strip()
-                lines = [l.strip() for l in text.split('\n') if l.strip()]
-                name = lines[0] if lines else ""
                 
-                for term in ["•", "1st", "2nd", "3rd", "degree"]:
+                name = text.split('\n')[0].strip()
+                for term in ["•", "1st", "2nd", "3rd", "degree", "View"]:
                     if term in name:
                         name = name.split(term)[0].strip()
                         
@@ -137,23 +135,19 @@ class LinkedInSearchDiscoveryProvider(BaseDiscoveryProvider):
                     
                 seen_urls.add(href)
                 
-                # Get headline from the ancestor LI or parent container
                 headline = "LinkedIn Member"
                 try:
-                    li_locator = link.locator('xpath=./ancestor::li').first
-                    if await li_locator.count() > 0:
-                        card_text = await li_locator.text_content()
-                    else:
-                        # Fallback to a div that might contain the card
-                        div_locator = link.locator('xpath=./ancestor::div[contains(@class, "search-result") or contains(@class, "entity")]').first
-                        if await div_locator.count() > 0:
-                            card_text = await div_locator.text_content()
-                        else:
-                            card_text = ""
-                            
-                    if card_text:
-                        card_lines = [l.strip() for l in card_text.split('\n') if l.strip()]
-                        headline = " | ".join(card_lines[:6])
+                    parent = link.locator('xpath=../..')
+                    if await parent.count() > 0:
+                        card_text = await parent.inner_text()
+                        lines = [l.strip() for l in card_text.split('\n') if l.strip()]
+                        
+                        for line in lines:
+                            # Skip the name line or connection badges
+                            if name in line or "View" in line or "degree" in line or "1st" in line or "2nd" in line or "3rd" in line or "mutual" in line:
+                                continue
+                            headline = line
+                            break
                 except Exception:
                     pass
                     

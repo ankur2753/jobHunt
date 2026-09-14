@@ -1,61 +1,61 @@
-# COMPONENTS — Script & Module Reference
+# COMPONENTS - Script and module reference
 
 Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[WORKFLOWS]]
 
 ---
 
-## Orchestrator Layer
+## Orchestrator layer
 
 ### `scripts/orchestrator/orchestrator.py`
-**Role**: Main CLI entry point for all automation.
+**Role**: CLI entry point.
 
-- Presents portal selection menu (LinkedIn / Naukri / InstaHyre)
+- Presents portal selection menu (LinkedIn, Naukri, InstaHyre)
 - Presents action menu (apply, scrape, cold message, form fill)
 - Manages browser lifecycle: setup, login check, teardown
-- Owns the file lock (`port_info.json`) via `get_lock()` / `release_lock()`
+- Owns the file lock (`port_info.json`) via `get_lock()` and `release_lock()`
 - Contains `LinkedInPlaywright` class (handles LinkedIn session inline)
 - Delegates to `NaukriPlaywright`, `LinkedInJobApply`, `NaukriJobApply`, etc.
 
-**Key classes/functions**:
-- `LinkedInPlaywright` — cookie-based login, session save
-- `get_lock()` / `release_lock()` — 5-min expiry file lock
-- `main()` — async entry point with full menu flow
+**Key classes and functions**:
+- `LinkedInPlaywright`. Handles cookie-based login and session saves.
+- `get_lock()` and `release_lock()`. Controls the 5-minute expiry file lock.
+- `main()`. Async entry point with full menu flow.
 
 ---
 
 ### `scripts/orchestrator/mcp_server.py`
-**Role**: MCP protocol server exposing automation tools to Claude Desktop.
+**Role**: MCP protocol server exposing automation tools.
 
-- Allows LLM to invoke automation without running CLI manually
-- Tools: check login, apply to jobs, scrape jobs (partial implementation)
-- Connects to existing browser via WebSocket endpoint from `port_info.json`
+- Allows LLM to invoke automation without running CLI manually.
+- Tools: check login, apply to jobs, scrape jobs.
+- Connects to existing browser via WebSocket endpoint from `port_info.json`.
 
 ---
 
 ### `scripts/orchestrator/resume_modifier.py`
-**Role**: Legacy LLM-powered resume customization per job posting.
+**Role**: Legacy LLM-powered resume customization.
 
-- Superseded by the new 1-page A4 [[RESUME_TAILORING_ENGINE]] (`scripts/cli_tailor.py`).
-
----
-
-## Resume & Document Automation Engine ([[RESUME_TAILORING_ENGINE]])
-
-### `scripts/cli_tailor.py` (~520 LOC)
-**Role**: Standalone automation engine CLI & Python module.
-
-- Scrapes Job URLs (Playwright `domcontentloaded` fallback) or accepts raw JD text snippets
-- Interacts with provider-agnostic LLM fallback system (`scripts/common_stuff/llm_fallback.py`)
-- Renders **1-page A4 Resume PDF** (`Ankur_Kumar_[Company]_Resume.pdf`) and **1-page A4 Cover Letter PDF**
-- Generates **LinkedIn Recruiter Cold Outreach DM text**
-- Outputs clean JSON for Telegram bots and web APIs (`--json`)
+- Superseded by the new [[RESUME_TAILORING_ENGINE]] (`scripts/cli_tailor.py`).
 
 ---
 
-### `scripts/common_stuff/llm_fallback.py` (~180 LOC)
+## Resume and document automation engine ([[RESUME_TAILORING_ENGINE]])
+
+### `scripts/cli_tailor.py`
+**Role**: Standalone automation engine CLI and Python module.
+
+- Scrapes job URLs (Playwright `domcontentloaded` fallback) or accepts raw JD text snippets.
+- Interacts with provider-agnostic LLM fallback system (`scripts/common_stuff/llm_fallback.py`).
+- Renders 1-page A4 resume PDF and cover letter PDF.
+- Generates LinkedIn recruiter cold outreach DM text.
+- Outputs clean JSON for Telegram bots and web APIs (`--json`).
+
+---
+
+### `scripts/common_stuff/llm_fallback.py`
 **Role**: Provider-agnostic LLM query engine.
 
-- Dynamically selects LLM provider based on available environment variables:
+- Dynamically selects LLM provider based on environment variables:
   * `GEMINI_API_KEY` (Google Gemini)
   * `OPENAI_API_KEY` (OpenAI GPT-4o-mini)
   * `OPENROUTER_API_KEY` (OpenRouter)
@@ -64,42 +64,42 @@ Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[WORKFLOWS]]
 
 ---
 
-### `scripts/examples/telegram_bot_sample.py` (~90 LOC)
+### `scripts/examples/telegram_bot_sample.py`
 **Role**: Telegram Bot handler sample script.
 
-- Listens for Job URLs / descriptions in Telegram chat
-- Executes `cli_tailor.py --json` in a background subprocess
-- Uploads Resume & Cover Letter PDF documents directly into Telegram chat
+- Listens for job URLs and descriptions in Telegram chat.
+- Executes `cli_tailor.py --json` in a background subprocess.
+- Uploads resume and cover letter PDF documents directly into Telegram chat.
 
 ---
 
-### `prompts/` (Prompt Templates)
-**Role**: Modular Prompt Library.
+### `prompts/`
+**Role**: Prompt library.
 
-- `job_analysis_prompt.md` — Extracting Must-Have / Nice-To-Have requirements
-- `resume_tailoring_prompt.md` — 1-page A4 resume tailoring system prompt
-- `cover_letter_prompt.md` — Technical cover letter prompt
-- `linkedin_outreach_prompt.md` — 2-3 sentence recruiter cold DM prompt
-- `telegram_bot_prompt.md` — Telegram bot agent system prompt & RPC protocol spec
+- `job_analysis_prompt.md`. Extracts requirements.
+- `resume_tailoring_prompt.md`. 1-page A4 resume tailoring system prompt.
+- `cover_letter_prompt.md`. Technical cover letter prompt.
+- `linkedin_outreach_prompt.md`. Cold DM prompt.
+- `telegram_bot_prompt.md`. Telegram bot agent system prompt.
 
-## Common Utilities
+## Common utilities
 
-### `scripts/common_stuff/chatbot_form_filler.py` (~514 LOC)
-**Role**: Core form detection and filling logic shared across portals.
+### `scripts/common_stuff/chatbot_form_filler.py`
+**Role**: Core form detection and filling logic.
 
 - Detects form questions via 3-level strategy:
   1. HTML `<label for="...">` mapping
   2. `placeholder` attribute extraction
   3. `aria-label` attribute detection
-- Supports 8 field types: text, number, email, select, radio, checkbox, textarea, date
-- Calls `vector_db_manager.answer_question()` for semantic matching
-- Calls `answer_validators.normalize()` before filling
-- Human fallback: prompts user when confidence < threshold
-- Returns `FormSession` with stats: total, auto_filled, skipped, failed
+- Supports 8 field types: text, number, email, select, radio, checkbox, textarea, date.
+- Calls `vector_db_manager.answer_question()` for semantic matching.
+- Calls `answer_validators.normalize()` before filling.
+- Prompts user when confidence falls below threshold.
+- Returns `FormSession` with stats on total, auto-filled, skipped, and failed fields.
 
 ---
 
-### `scripts/common_stuff/answer_validators.py` (~380 LOC)
+### `scripts/common_stuff/answer_validators.py`
 **Role**: Answer normalization for 9 field categories.
 
 | Category | Input Example | Output |
@@ -119,21 +119,20 @@ Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[WORKFLOWS]]
 ### `scripts/common_stuff/vector_db_manager.py`
 **Role**: ChromaDB interface for personal profile semantic search.
 
-- Manages ChromaDB collection at `vector_db/`
-- `answer_question(query)` → `AnswerCandidate(answer_text, confidence, source)`
-- `add_answer(question, answer, category)` — learns new Q&A pairs
-- Uses `sentence-transformers/all-MiniLM-L6-v2` for embeddings
-- Extended with `answer_question()` method during Phase 2
+- Manages ChromaDB collection at `vector_db/`.
+- `answer_question(query)` returns `AnswerCandidate(answer_text, confidence, source)`.
+- `add_answer(question, answer, category)` saves new Q&A pairs.
+- Uses `sentence-transformers/all-MiniLM-L6-v2` for embeddings.
 
 ---
 
-### `scripts/common_stuff/retry_utils.py` (~250 LOC)
-**Role**: Retry decorators and helpers for Playwright async operations.
+### `scripts/common_stuff/retry_utils.py`
+**Role**: Retry decorators and helpers for Playwright.
 
-- `@retry_async(max_attempts, backoff, initial_delay)` — exponential backoff decorator
-- `retry_until_visible(page, selector, timeout)` — wait for element visibility
-- `retry_until_enabled(page, selector, timeout)` — wait for element to be enabled
-- `RetryException` — custom exception class
+- `@retry_async(max_attempts, backoff, initial_delay)` handles exponential backoff.
+- `retry_until_visible(page, selector, timeout)` waits for element visibility.
+- `retry_until_enabled(page, selector, timeout)` waits for element to be enabled.
+- `RetryException` defines custom exception class.
 
 ```python
 @retry_async(max_attempts=3, backoff=2, initial_delay=1)
@@ -144,21 +143,21 @@ async def click_apply_button(page):
 
 ---
 
-### `scripts/common_stuff/naukri_selector_discovery.py` (~380 LOC)
+### `scripts/common_stuff/naukri_selector_discovery.py`
 **Role**: Runtime selector validation for Naukri pages.
 
-- `SelectorValidator` class: probes live pages for selector health
-- Exports timestamped JSON reports to `logs/`
-- Used by E2E test runner to check selector pass/fail
-- Reports: HTML samples, working/broken selectors, fallback recommendations
+- `SelectorValidator` class probes live pages for selector health.
+- Exports timestamped JSON reports to `logs/`.
+- Used by E2E test runner to check selector pass and fail states.
+- Reports HTML samples, working and broken selectors, and fallback recommendations.
 
 ---
 
 ### `scripts/common_stuff/pattern_learner.py`
-**Role**: Learns patterns from user corrections to improve future form filling.
+**Role**: Learns patterns from user corrections.
 
-- Stores corrected Q&A pairs
-- Status: Scaffolded, not fully integrated
+- Stores corrected Q&A pairs.
+- Status: Scaffolded, not fully integrated.
 
 ---
 
@@ -177,85 +176,81 @@ async def click_apply_button(page):
 
 ---
 
-## Login / Cookie Management
+## Login and cookie management
 
 ### `scripts/cookie_management_login/naukri_login.py`
-**Role**: `NaukriPlaywright` class — Naukri session management.
+**Role**: `NaukriPlaywright` class for Naukri session management.
 
-- Cookie-based login (`naukri_cookies.json`)
-- `is_logged_in()` — checks session validity
-- `login_manually_and_save()` — opens browser for manual login, saves cookies
+- Cookie-based login (`naukri_cookies.json`).
+- `is_logged_in()` checks session validity.
+- `login_manually_and_save()` opens browser for manual login and saves cookies.
 
 ---
 
 ### `scripts/cookie_management_login/instahyre_login.py`
-**Role**: `InstahyrePlaywright` class — InstaHyre session management.
+**Role**: `InstahyrePlaywright` class for InstaHyre session management.
 
-- Cookie-based login only; no apply/scrape implemented yet
+- Cookie-based login only.
 
 ---
 
-### `scripts/cookie_management_login/naukri_form_filler.py` (~463 LOC)
+### `scripts/cookie_management_login/naukri_form_filler.py`
 **Role**: Naukri-specific form filling orchestration.
 
-- Wraps `ChatbotFormFiller` with Naukri-specific selectors and flow
-- Default confidence threshold: **0.70** (stricter)
-- Handles NLA popup closing (`_close_nla_popups()`)
-- Multi-tier submit button detection
-- `fill_naukri_job_application(job_url, dry_run, allow_human_input, submit_form)`
-- `get_session_report()` — returns form stats dict
+- Wraps `ChatbotFormFiller` with Naukri-specific selectors and flow.
+- Default confidence threshold: 0.70.
+- Handles NLA popup closing (`_close_nla_popups()`).
+- Multi-tier submit button detection.
+- Exposes `fill_naukri_job_application(job_url, dry_run, allow_human_input, submit_form)`.
+- Exposes `get_session_report()`.
 
 **NAUKRI_SELECTORS** dictionary:
 
 | Key | Selector | Stability |
 |-----|----------|-----------|
-| `job_title_heading` | `[data-qa="jobDetailTitle"], h1.jobTitle, ...` | Medium |
-| `company_name` | `[data-qa="jobCardCompanyName"], ...` | Medium |
+| `job_title_heading` | `[data-qa="jobDetailTitle"], h1.jobTitle` | Medium |
+| `company_name` | `[data-qa="jobCardCompanyName"]` | Medium |
 | `apply_button` | `button[data-qa="nxtApplyBtn"]` | High |
-| `chatbot_form_container` | `.filler-container, .customFields, ...` | High |
+| `chatbot_form_container` | `.filler-container, .customFields` | High |
 | `submit_button` | `button[type="submit"], button[data-qa="submit"]` | Medium |
 
 ---
 
-### `scripts/cookie_management_login/linkedin_form_filler.py` (~465 LOC)
+### `scripts/cookie_management_login/linkedin_form_filler.py`
 **Role**: LinkedIn-specific form filling orchestration.
 
-- Default confidence threshold: **0.65** (balanced)
-- `fill_linkedin_job_application(job_url, ...)`
-- `get_session_report()`
+- Default confidence threshold: 0.65.
+- Exposes `fill_linkedin_job_application(job_url, ...)`.
+- Exposes `get_session_report()`.
 
 ---
 
-## Job Scraping & Application
+## Job scraping and application
 
 ### `scripts/job_scraping/naukri_job_apply.py`
 **Role**: Navigate recommended jobs page, collect job cards, trigger apply.
 
-- Goes to `https://www.naukri.com/mnjuser/recommendedjobs`
-- Collects `[data-qa="jobTuple"]` job cards
-- Integrates `SelectorValidator` for runtime validation
-- Retries apply button click with multiple selectors
-- Initializes `NaukriFormFiller` for each job
-- `apply_to_recommended_jobs(max_jobs)` → results dict
-- `get_diagnostics()` / `export_diagnostics()` — JSON logs
+- Goes to `https://www.naukri.com/mnjuser/recommendedjobs`.
+- Collects `[data-qa="jobTuple"]` job cards.
+- Integrates `SelectorValidator` for runtime validation.
+- Retries apply button click with multiple selectors.
+- Initializes `NaukriFormFiller` for each job.
+- `apply_to_recommended_jobs(max_jobs)` returns results dict.
+- Exposes `get_diagnostics()` and `export_diagnostics()`.
 
 ---
 
 ### `scripts/job_scraping/linkedin_job_apply.py`
 **Role**: LinkedIn Easy Apply automation.
 
-- `LinkedInJobApply(page)`
-- `apply_to_jobs(job_title, location)` — searches and applies
-- Status: Partial implementation
+- Partial implementation.
 
 ---
 
 ### `scripts/job_scraping/linkedin_job_scraper.py`
-**Role**: Scrape LinkedIn job listings (last 24h).
+**Role**: Scrape LinkedIn job listings.
 
-- `LinkedInJobScraper(page, job_title, location)`
-- `scrape_jobs()` — returns list of job postings
-- **Status: Broken** (see [[KNOWN_BUGS]])
+- **Status: Broken** (see [[KNOWN_BUGS]]).
 
 ---
 
@@ -264,9 +259,7 @@ async def click_apply_button(page):
 ### `scripts/networking/linkedin_cold_message.py`
 **Role**: Automated cold outreach to LinkedIn profiles.
 
-- `LinkedInColdMessenger(page)`
-- `send_bulk_outreach(profile_urls, reason)` — sends personalized connection requests
-- Status: Implemented and working
+- Sends personalized connection requests via `send_bulk_outreach(profile_urls, reason)`.
 
 ---
 
@@ -280,9 +273,9 @@ async def click_apply_button(page):
 ### `scripts/tests/naukri_e2e_test.py`
 **Role**: 3-stage E2E validation framework for Naukri.
 
-- Stage 1: Navigate & collect job cards
-- Stage 2: Validate job card elements & apply buttons
-- Stage 3: Test apply click & form detection
+- Stage 1: Navigate and collect job cards.
+- Stage 2: Validate job card elements and apply buttons.
+- Stage 3: Test apply click and form detection.
 
 ```bash
 python scripts/tests/naukri_e2e_test.py --max-jobs 3 --headed
@@ -322,10 +315,10 @@ python scripts/tests/test_real_job_posting.py \
 
 ---
 
-## Configuration & Data
+## Configuration and data
 
 ### `config/requirements.txt`
-```
+```text
 playwright==1.58.0
 pytest-playwright==0.4.4
 python-dotenv==1.0.1
@@ -340,6 +333,6 @@ sentence-transformers==2.7.0
 Browser-based form to collect personal details. Generates `setup_data.py` which populates the vector DB.
 
 ### `personal_details/` (legacy)
-- `user_details.json` — flat profile (name, skills, experience, etc.)
-- `job_prefrences.json` — target roles, locations, salary range
-- `*_cookies.json` — Playwright session state files
+- `user_details.json` - Flat profile (name, skills, experience, etc.)
+- `job_prefrences.json` - Target roles, locations, salary range
+- `*_cookies.json` - Playwright session state files

@@ -48,10 +48,11 @@ class LinkedInJobApply:
         from scripts.common_stuff.prompt_manager import load_prompt
         prompt = load_prompt("linkedin_job_apply")
         
+        import os
         llm_agent = CustomLLMAgent()
         success = await llm_agent.execute_loop(
             page=self.page, 
-            model_name="gemini-3.7-flash", 
+            model_name=os.getenv("FAST_MODEL", "gemini-3.6-flash"), 
             max_steps=30, 
             prompt=prompt
         )

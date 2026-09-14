@@ -30,7 +30,12 @@ class CustomLLMAgent:
         if not self.api_key:
             logger.warning("No API key found (tried LLM_API_KEY, GEMINI_API_KEY). Agent will likely fail. Please set it in .env")
             
-        self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=120.0,
+            max_retries=5
+        )
 
     async def _get_base64_screenshot(self, page):
         try:
@@ -56,16 +61,16 @@ class CustomLLMAgent:
                 "type": "function",
                 "function": {
                     "name": "click",
-                    "description": "Click an element using a CSS selector.",
-                    "parameters": {"type": "object", "properties": {"selector": {"type": "string"}}, "required": ["selector"]}
+                    "description": "Click an element using its element_id.",
+                    "parameters": {"type": "object", "properties": {"element_id": {"type": "integer"}}, "required": ["element_id"]}
                 }
             },
             {
                 "type": "function",
                 "function": {
                     "name": "type_text",
-                    "description": "Type text into an input field.",
-                    "parameters": {"type": "object", "properties": {"selector": {"type": "string"}, "value": {"type": "string"}}, "required": ["selector", "value"]}
+                    "description": "Type text into an input field using its element_id.",
+                    "parameters": {"type": "object", "properties": {"element_id": {"type": "integer"}, "value": {"type": "string"}}, "required": ["element_id", "value"]}
                 }
             },
             {
@@ -111,25 +116,40 @@ class CustomLLMAgent:
         for step in range(max_steps):
             logger.info(f"Fallback step {step + 1}/{max_steps} using {model_name}")
             
+            # External domain check
+            try:
+                current_url = page.url
+                if "linkedin.com" not in current_url and "google.com" not in current_url:
+                    logger.info(f"External portal detected, escaping LLM loop: {current_url}")
+                    return True  # Handle external in upper orchestrator
+                
+                # Check for new tabs/popups
+                if len(page.context.pages) > 1:
+                    latest_page = page.context.pages[-1]
+                    logger.info(f"New tab opened detected, escaping LLM loop: {latest_page.url}")
+                    return True
+            except Exception as e:
+                pass
+            
             try:
                 screenshot_b64 = await self._get_base64_screenshot(page)
                 
-                # Scrape interactive elements to provide hints
+                # Scrape interactive elements to provide hints with Set-of-Mark IDs
                 interactables_js = """
                 () => {
-                    const interactables = Array.from(document.querySelectorAll('input, button, select, textarea, [role="button"], a'));
-                    return interactables.filter(el => {
+                    let idCounter = 1;
+                    const interactables = Array.from(document.querySelectorAll('input, button, select, textarea, [role="button"], a, [tabindex="0"]'));
+                    const elements = [];
+                    interactables.forEach(el => {
                         const style = window.getComputedStyle(el);
-                        return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetWidth > 0;
-                    }).map(el => {
-                        let text = (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().substring(0, 30);
-                        let tag = el.tagName.toLowerCase();
-                        let type = el.type ? `[type="${el.type}"]` : '';
-                        let id = el.id ? `#${el.id}` : '';
-                        let name = el.name ? `[name="${el.name}"]` : '';
-                        let selector = `${tag}${id}${name}${type}`;
-                        return `Selector: \\`${selector}\\` | Label/Text: "${text}"`;
-                    }).slice(0, 50).join('\\n');
+                        if (style.display !== 'none' && style.visibility !== 'hidden' && el.offsetWidth > 0 && el.offsetHeight > 0) {
+                            el.setAttribute('data-agent-id', idCounter);
+                            let text = (el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || '').trim().replace(/\\n/g, ' ').substring(0, 50);
+                            elements.push(`[ID: ${idCounter}] ${el.tagName.toLowerCase()} - "${text}"`);
+                            idCounter++;
+                        }
+                    });
+                    return elements.join('\\n');
                 }
                 """
                 dom_hints = await page.evaluate(interactables_js)
@@ -201,24 +221,24 @@ class CustomLLMAgent:
                     elif action == "mark_fail":
                         return False
                     elif action == "click":
-                        selector = args.get("selector")
-                        if selector:
+                        element_id = args.get("element_id")
+                        if element_id is not None:
                             try:
-                                await page.click(selector, timeout=5000)
+                                await page.click(f'[data-agent-id="{element_id}"]', timeout=5000)
                             except Exception as e:
-                                tool_result = f"Error clicking: {e}"
+                                tool_result = f"Error clicking element {element_id}: {e}"
                         else:
-                            tool_result = "Error: no selector provided"
+                            tool_result = "Error: no element_id provided"
                     elif action == "type_text":
-                        selector = args.get("selector")
+                        element_id = args.get("element_id")
                         value = args.get("value", "")
-                        if selector:
+                        if element_id is not None:
                             try:
-                                await page.fill(selector, value, timeout=5000)
+                                await page.fill(f'[data-agent-id="{element_id}"]', value, timeout=5000)
                             except Exception as e:
-                                tool_result = f"Error typing: {e}"
+                                tool_result = f"Error typing into element {element_id}: {e}"
                         else:
-                            tool_result = "Error: no selector provided"
+                            tool_result = "Error: no element_id provided"
                     elif action == "scroll":
                         direction = args.get("direction", "down")
                         try:
@@ -326,7 +346,7 @@ class CustomLLMAgent:
             logger.error("API client not initialized. Cannot analyze image.")
             return None
             
-        model_name = model_name or os.getenv("FAST_MODEL", "gemini-1.5-flash")
+        model_name = model_name or os.getenv("FAST_MODEL", "gemini-3.6-flash")
         screenshot_b64 = await self._get_base64_screenshot(page)
         
         messages = [
@@ -355,7 +375,7 @@ class CustomLLMAgent:
             logger.error("API client not initialized. Cannot analyze image from path.")
             return None
             
-        model_name = model_name or os.getenv("FAST_MODEL", "gemini-1.5-flash")
+        model_name = model_name or os.getenv("FAST_MODEL", "gemini-3.6-flash")
         
         try:
             with open(path, "rb") as image_file:
@@ -390,7 +410,7 @@ class CustomLLMAgent:
             logger.error("API client not initialized. Cannot ask text.")
             return None
             
-        model_name = model_name or os.getenv("FAST_MODEL", "gemini-1.5-flash")
+        model_name = model_name or os.getenv("FAST_MODEL", "gemini-3.6-flash")
         
         try:
             response = await self.client.chat.completions.create(

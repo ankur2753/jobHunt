@@ -75,6 +75,8 @@ class SelectorValidator:
         'apply_button': 'button[data-qa="nxtApplyBtn"]',
         'apply_button_alt1': 'button[data-qa="applyBtn"]',
         'apply_button_alt2': 'button:has-text("Apply")',
+        'apply_button_alt3': 'button[data-qa="easyApplyBtn"]',
+        'apply_button_alt4': 'button:has-text("Easy Apply")',
         'job_url': 'a[data-qa="jobCardCurrentJobTitle"]',
         'loader': '.loader, [data-qa="loader"], .spinner',
     }

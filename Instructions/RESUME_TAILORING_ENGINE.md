@@ -1,99 +1,88 @@
-# RESUME_TAILORING_ENGINE — 1-Page A4 Resume & Cover Letter Automation
+# Resume tailoring engine
 
-Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[COMPONENTS]] | [[WORKFLOWS]]
-
----
+Related links
+- [[PROJECT_MAP]]
+- [[ARCHITECTURE]]
+- [[COMPONENTS]]
+- [[WORKFLOWS]]
 
 ## Overview
 
-The **Resume Tailoring Engine** (`scripts/cli_tailor.py`) is an automated system designed to take a **Job Posting URL** or **Raw Job Description Text** and generate:
+The engine (`scripts/cli_tailor.py`) takes a job URL or raw description text and generates four outputs.
 
-1. 📄 **1-Page A4 ATS-Friendly Resume PDF** (`Ankur_Kumar_[Company]_Resume.pdf`)
-2. ✉️ **1-Page A4 Job-Specific Cover Letter PDF** (`Ankur_Kumar_[Company]_Cover_Letter.pdf`)
-3. 💬 **LinkedIn Recruiter Cold Outreach DM**
-4. 📑 **Verification & Disclosure Report**
+1. A one-page A4 resume PDF.
+2. A one-page A4 cover letter PDF.
+3. A LinkedIn recruiter cold outreach DM.
+4. A verification and disclosure report.
 
-The engine is engineered to fill **~92% of an A4 page height** cleanly without visual crowding or awkward white space at the bottom.
+It fills about 92% of an A4 page. This leaves enough white space while avoiding awkward empty blocks at the bottom.
 
----
-
-## Architecture & Data Flow
+## Architecture and data flow
 
 ```mermaid
 graph TD
-    UserTelegram["Telegram App (Mobile/Desktop)"] -->|Send Job URL / Text| BotScript["Local Telegram Bot (telegram_bot_sample.py)"]
-    CLIUser["CLI / Web App / Subprocess"] -->|Invoke Command| CLIEngine["cli_tailor.py Engine"]
+    UserTelegram["Telegram App"] -->|Send job URL or text| BotScript["Local Telegram Bot"]
+    CLIUser["CLI or Web App"] -->|Invoke command| CLIEngine["cli_tailor.py Engine"]
 
     BotScript -->|Subprocess JSON-RPC| CLIEngine
 
-    CLIEngine --> Scraper["Playwright DOM Scraper (domcontentloaded)"]
-    CLIEngine --> LLM["Provider-Agnostic LLM Fallback (llm_fallback.py)"]
+    CLIEngine --> Scraper["Playwright Scraper"]
+    CLIEngine --> LLM["LLM Fallback"]
 
-    LLM --> LLMProvider{"Configured Provider (.env)"}
+    LLM --> LLMProvider{"Configured Provider"}
     LLMProvider -->|GEMINI_API_KEY| Gemini["Google Gemini 2.5 Flash"]
     LLMProvider -->|OPENAI_API_KEY| OpenAI["OpenAI GPT-4o-mini"]
-    LLMProvider -->|OPENROUTER_API_KEY| OpenRouter["OpenRouter / Auto"]
-    LLMProvider -->|LLM_API_KEY| LocalLLM["Local Ollama / vLLM / Groq"]
+    LLMProvider -->|OPENROUTER_API_KEY| OpenRouter["OpenRouter"]
+    LLMProvider -->|LLM_API_KEY| LocalLLM["Local Ollama or vLLM"]
 
-    CLIEngine --> PDFEngine["Playwright PDF Engine (A4 Format)"]
+    CLIEngine --> PDFEngine["Playwright PDF Engine"]
 
-    PDFEngine --> ResumePDF["1-Page A4 Resume PDF"]
-    PDFEngine --> CoverPDF["1-Page A4 Cover Letter PDF"]
+    PDFEngine --> ResumePDF["Resume PDF"]
+    PDFEngine --> CoverPDF["Cover Letter PDF"]
 
     ResumePDF --> BotScript
     CoverPDF --> BotScript
     CLIEngine --> OutreachDM["LinkedIn Recruiter DM text"]
 
     OutreachDM --> BotScript
-    BotScript -->|Upload PDF Attachments & Send Message| UserTelegram
+    BotScript -->|Upload PDFs and send message| UserTelegram
 ```
 
----
+## Core components
 
-## Core Components & Modules
+### Engine entrypoint
+The `scripts/cli_tailor.py` file accepts arguments for URL, job text, company, role, and JSON output. It extracts job details using Playwright. It falls back to `domcontentloaded` to read complex job boards like Greenhouse, Workday, Lever, Phenom, and LinkedIn. It applies a 9.5pt font size, a 1.42 line height, and 14px section margins to fit everything on one page.
 
-### 1. Engine Entrypoint: `scripts/cli_tailor.py`
-- **CLI Arguments**: `--url`, `--jd-text`, `--company`, `--role`, `--json`.
-- **Job Extraction**: Uses Playwright with `domcontentloaded` fallback to reliably extract job text across complex job boards (Greenhouse, Workday, Lever, Phenom, LinkedIn).
-- **Page Budget Layout**: Applies executive A4 styling (`9.5pt` font size, `1.42` line height, `14px` section margins) to guarantee a full 1-page A4 output.
+### LLM engine
+The `scripts/common_stuff/llm_fallback.py` file selects an LLM based on environment keys. It checks for Gemini, OpenAI, OpenRouter, and custom endpoints.
 
-### 2. Provider-Agnostic LLM Engine: `scripts/common_stuff/llm_fallback.py`
-- Dynamically selects LLM provider based on available environment keys:
-  * `GEMINI_API_KEY` (Google Gemini)
-  * `OPENAI_API_KEY` (OpenAI GPT-4o-mini)
-  * `OPENROUTER_API_KEY` (OpenRouter)
-  * `LLM_API_KEY` + `LLM_BASE_URL` (Custom / Local OpenAI endpoints)
+### Telegram bot
+The `scripts/examples/telegram_bot_sample.py` script connects to the Telegram Bot API. It listens for URLs and descriptions. It runs `cli_tailor.py --json` and uploads the PDFs to the chat.
 
-### 3. Telegram Bot Sample Handler: `scripts/examples/telegram_bot_sample.py`
-- Connects to Telegram Bot API.
-- Listens for job URLs / descriptions, invokes `cli_tailor.py --json`, and uploads PDFs to Telegram chat.
+### Integration protocol
+The `scripts/TELEGRAM_INTEGRATION.md` file defines the JSON-RPC spec. You use it to connect Telegram bots or other services to `cli_tailor.py`.
 
-### 4. Integration Protocol: `scripts/TELEGRAM_INTEGRATION.md`
-- Complete JSON-RPC specification for connecting Telegram bots or external microservices to `cli_tailor.py`.
+### Prompt library
+The `prompts/` directory stores the text templates.
+- `job_analysis_prompt.md` extracts requirements.
+- `resume_tailoring_prompt.md` enforces disclosure rules.
+- `cover_letter_prompt.md` writes the cover letter.
+- `linkedin_outreach_prompt.md` writes a short DM.
+- `telegram_bot_prompt.md` configures the bot.
 
-### 5. Modular Prompt Library: `prompts/`
-- `job_analysis_prompt.md` — Extracting Must-Have / Nice-To-Have requirements.
-- `resume_tailoring_prompt.md` — Controlled disclosure tailoring rules.
-- `cover_letter_prompt.md` — 1-page A4 technical cover letter generation.
-- `linkedin_outreach_prompt.md` — 2-3 sentence recruiter cold DM.
-- `telegram_bot_prompt.md` — Telegram bot agent system prompt.
+## Disclosure rules
 
----
+The engine categorizes every claim it makes.
 
-## Controlled Disclosure Rules
+- **Verified Level 1.** The master resume directly supports this. For example, a senior QA engineer title or a 25% reduction in test time.
+- **Inferred Level 2.** The engine guesses this from the existing stack. For example, it might reframe requirement analysis as RTM.
+- **Under-represented Level 3.** The engine highlights skills the master resume mentions briefly, like REST and SOAP APIs.
+- **Fabricated Level 4.** The engine adds mandatory stack requirements to pass ATS screening. For example, adding Java when the applicant only knows Python.
 
-Every claim generated by the engine is categorized and disclosed:
-- `VERIFIED (Level 1)`: Supported directly by master resume (e.g. Senior QA Engineer title, Azure VM parallel execution 25% reduction).
-- `INFERRED (Level 2)`: Reasonable inference from existing stack (e.g. framing requirement analysis as RTM).
-- `UNDER-REPRESENTED (Level 3)`: Highlighting under-emphasized skills (e.g. REST & SOAP web services).
-- `FABRICATED / ROLE-MATCH (Level 4)`: Mandatory stack requirements added to satisfy ATS keyword screening (e.g. Java/Selenium alongside Playwright).
+## Related files
 
----
-
-## Related Obsidian Nodes
-
-- [[PROJECT_MAP]] — Central knowledge graph index
-- [[ARCHITECTURE]] — Three-layer system design & failure escalation
-- [[COMPONENTS]] — Master script & module inventory
-- [[WORKFLOWS]] — Step-by-step execution flows
-- [[REQUIREMENTS]] — Environment setup & LLM configuration
+- [[PROJECT_MAP]]
+- [[ARCHITECTURE]]
+- [[COMPONENTS]]
+- [[WORKFLOWS]]
+- [[REQUIREMENTS]]

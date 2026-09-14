@@ -1,72 +1,67 @@
-# Job Hunt Agent: Infrastructure & Deployment Guide
+# Infrastructure and deployment guide
 
-This document outlines the target architecture for deploying the Job Hunt Agent to the cloud while avoiding Datacenter IP bans (LinkedIn, Naukri) by using a residential proxy tunnel.
+This document outlines how to deploy the job hunt agent to the cloud. Job platforms like LinkedIn and Naukri aggressively block datacenter IP addresses. We avoid these bans by routing traffic through a residential proxy tunnel. 
 
-## The Architecture: "Cloud Muscle, Residential Face"
+## System architecture
 
-*   **Compute (The Muscle):** Oracle Cloud Always Free Tier (ARM64, 24GB RAM). Runs Docker, Playwright, Vector DB, and Telegram polling.
-*   **Networking (The Face):** An old laptop (e.g., Acer Travelmate) or device sitting on your home Wi-Fi, acting as a Tailscale Exit Node.
-*   **The Tunnel:** Tailscale (a free, zero-config WireGuard VPN) connects the two. Oracle routes all its outbound browser traffic through your home IP.
+The setup splits compute power and network routing. 
 
----
+An Oracle Cloud Always Free Tier instance provides the compute. It has 4 ARM64 cores and 24GB of RAM. It runs Docker, Playwright, the vector database, and the Telegram bot.
 
-## Step-by-Step Implementation
+An old laptop or small device on your home network acts as the network exit. 
 
-### Phase 1: The Home Exit Node
-1. Take your old hardware (e.g., the Acer laptop) and install a lightweight Linux distribution (Debian 32-bit or Alpine).
-2. Connect it to your home Wi-Fi and ensure it stays awake (disable sleep/suspend).
-3. Install Tailscale: `curl -fsSL https://tailscale.com/install.sh | sh`
+Tailscale connects the cloud server and the home device. The cloud server routes all outbound browser traffic through your home IP address. To the job platforms, the traffic looks like it comes from a residential connection.
+
+## Set up the home exit node
+
+1. Install a lightweight Linux distribution like Debian 32-bit or Alpine on an old device.
+2. Connect it to your home Wi-Fi and disable sleep and suspend modes.
+3. Install Tailscale by running `curl -fsSL https://tailscale.com/install.sh | sh`.
 4. Authenticate your Tailscale account.
-5. Advertise the device as an exit node:
-   ```bash
-   sudo tailscale up --advertise-exit-node
-   ```
-6. Go to your [Tailscale Admin Console](https://login.tailscale.com/admin/machines), locate the Acer laptop, click "Edit route settings", and approve it as an Exit Node.
+5. Advertise the device as an exit node with `sudo tailscale up --advertise-exit-node`.
+6. Open your Tailscale admin console. Find the home device, edit the route settings, and approve it as an exit node.
 
-### Phase 2: The Oracle Cloud Setup
-1. Sign up for Oracle Cloud (use a real credit card, disable VPNs during sign-up to avoid fraud flags).
-2. Provision an **Ampere A1 Compute** instance (Ubuntu 22.04 or 24.04). Max out the free tier sliders: **4 OCPUs, 24GB RAM**.
-3. SSH into your new Oracle VM from your main laptop.
+## Set up the cloud server
+
+1. Sign up for Oracle Cloud. Use a real credit card and turn off any VPNs during sign-up to avoid automated fraud bans.
+2. Provision an Ampere A1 Compute instance running Ubuntu 22.04 or 24.04. Set it to 4 OCPUs and 24GB RAM.
+3. SSH into the Oracle virtual machine from your main computer.
 4. Install Docker and Docker Compose.
-5. Install Tailscale on the Oracle VM:
-   ```bash
-   curl -fsSL https://tailscale.com/install.sh | sh
-   ```
-6. Tell the Oracle VM to route its traffic through your home laptop:
-   ```bash
-   sudo tailscale up --exit-node=<IP-of-Acer-Tailscale-Node>
-   ```
+5. Install Tailscale by running `curl -fsSL https://tailscale.com/install.sh | sh`.
+6. Route the Oracle server traffic through your home device with `sudo tailscale up --exit-node=<IP-of-home-node>`.
 
-### Phase 3: Deployment & Secrets Management
-*Never commit your `.env` or `personal_details` to Git.*
+## Deploy and manage secrets
 
-1. **On the Oracle Server:**
-   ```bash
-   git clone https://github.com/ankur2753/jobHunt.git /app/agent
-   cd /app/agent
-   ```
-2. **On your Main Laptop (Local):** Securely copy your secrets to the server.
-   ```bash
-   # Copy environment variables
-   scp .env ubuntu@<Oracle-IP>:/app/agent/
+Do not commit your `.env` or `personal_details` folders to Git.
 
-   # Copy persistent cookies/logins
-   scp -r personal_details/ ubuntu@<Oracle-IP>:/app/agent/
-   ```
+On the Oracle server, clone the repository:
+```bash
+git clone https://github.com/ankur2753/jobHunt.git /app/agent
+cd /app/agent
+```
 
-### Phase 4: Launch
-1. On the Oracle server, launch the agent:
-   ```bash
-   docker-compose up -d --build
-   ```
-2. Check the logs to ensure the headless browser and Redis are functioning:
-   ```bash
-   docker-compose logs -f
-   ```
+On your local computer, copy your secrets to the cloud server using secure copy:
+```bash
+scp .env ubuntu@<Oracle-IP>:/app/agent/
+scp -r personal_details/ ubuntu@<Oracle-IP>:/app/agent/
+```
 
----
+## Launch the agent
 
-## Maintenance & Debugging
-*   **Checking IP:** To verify Oracle is using your home IP, run `curl ifconfig.me` on the Oracle server while Tailscale is active. It should return your home router's public IP.
-*   **Updating Code:** SSH into Oracle, `git pull`, and `docker-compose restart job-hunt-agent`.
-*   **Database Persistence:** Your ChromaDB (`vector_db/`) and cookies (`personal_details/`) are mounted via Docker volumes. If you ever destroy the Oracle server, make sure to `scp` those folders back to your local laptop first to avoid losing data!
+Start the containers on the Oracle server:
+```bash
+docker-compose up -d --build
+```
+
+Check the logs to verify the headless browser and database are running:
+```bash
+docker-compose logs -f
+```
+
+## Maintenance and debugging
+
+You can verify the Oracle server is using your home IP address. Run `curl ifconfig.me` on the cloud server. It should return your home router's public IP address.
+
+To update the code, SSH into the Oracle server, run `git pull`, and restart the service with `docker-compose restart job-hunt-agent`.
+
+Your ChromaDB and browser cookies persist through Docker volumes. Back up the `vector_db/` and `personal_details/` folders to your local computer before terminating the Oracle server to avoid data loss.

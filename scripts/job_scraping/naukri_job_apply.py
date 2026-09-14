@@ -35,7 +35,7 @@ class NaukriJobApply:
     SELECTORS = {
         'job_cards': '[data-qa="jobTuple"], .jobTuple, .srp-jobtuple, .jobCardContainer, [data-qa="job-card"]',
         'job_card_title': '[data-qa="jobTitle"], .jobTitle, a.title, .title, h2, h3',
-        'apply_button': 'button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button:has-text("Apply")',
+        'apply_button': 'button[data-qa="nxtApplyBtn"], button[data-qa="applyBtn"], button[data-qa="easyApplyBtn"], button:has-text("Apply"), button:has-text("Easy Apply")',
         'job_url': 'a[data-qa="jobCardCurrentJobTitle"]',
         'loader': '.loader, [data-qa="loader"]',
         'popup_close': 'button[aria-label="Close"], .popup-close, [data-qa="closeModal"]',
@@ -45,7 +45,7 @@ class NaukriJobApply:
     BULK_SELECT_SELECTORS = {
         'job_card_checkbox': '.tuple-check-box, input[type="checkbox"]',  # Checkbox within job card
         'job_card_select_btn': 'button[data-qa*="select"], button[aria-label*="select"]',  # Select button
-        'bulk_apply_button': 'button[data-qa="applyBtn"], button[data-qa="nxtApplyBtn"], button:has-text("Apply")',  # Top right apply
+        'bulk_apply_button': 'button[data-qa="applyBtn"], button[data-qa="nxtApplyBtn"], button[data-qa="easyApplyBtn"], button:has-text("Apply"), button:has-text("Easy Apply")',  # Top right apply
         'selected_jobs_count': '[data-qa="selectedCount"], [class*="selected"]',  # Counter for selected jobs
     }
     
@@ -123,7 +123,10 @@ class NaukriJobApply:
                 return selected_jobs
             
             # Select jobs one by one
-            for idx, job_card in enumerate(job_cards[:jobs_to_select], 1):
+            for idx, job_card in enumerate(job_cards, 1):
+                if len(selected_jobs) >= max_jobs:
+                    break
+
                 try:
                     await job_card.scroll_into_view_if_needed()
                     await asyncio.sleep(0.3)
@@ -152,6 +155,14 @@ class NaukriJobApply:
                                 job_url = f"https://www.naukri.com{href}"
                             else:
                                 job_url = href
+
+                    # Skip if already attempted in this session
+                    if job_url and job_url in self.applied_job_ids:
+                        logger.info(f"      ⏭️  Skipping already attempted job: {job_title}")
+                        continue
+                    
+                    if job_url:
+                        self.applied_job_ids.add(job_url)
                     
                     # Click checkbox or select button
                     if selection_method == 'checkbox':
@@ -224,7 +235,9 @@ class NaukriJobApply:
             button_selectors = [
                 'button[data-qa="nxtApplyBtn"]',
                 'button[data-qa="applyBtn"]',
+                'button[data-qa="easyApplyBtn"]',
                 'button:has-text("Apply")',
+                'button:has-text("Easy Apply")',
                 self.BULK_SELECT_SELECTORS['bulk_apply_button']
             ]
             
@@ -367,6 +380,51 @@ class NaukriJobApply:
         except Exception as e:
             logger.error(f"Failed to update last working day: {e}")
             return False
+            
+    async def update_resume(self, resume_path: str = None) -> bool:
+        """
+        Re-uploads the resume to the Naukri profile.
+        
+        Args:
+            resume_path: Path to the resume file. If None, defaults to ANKUR_KUMAR_resume_sdet.pdf
+            
+        Returns:
+            bool: True if updated successfully, False otherwise.
+        """
+        try:
+            if not resume_path:
+                project_root = Path(__file__).resolve().parents[2]
+                resume_path = str(project_root / "resumes" / "resume-sdet" / "ANKUR_KUMAR_resume_sdet.pdf")
+            
+            if not Path(resume_path).exists():
+                logger.error(f"Resume file not found at: {resume_path}")
+                return False
+                
+            profile_url = "https://www.naukri.com/mnjuser/profile"
+            
+            logger.info(f"Navigating to Naukri profile page to update Resume: {profile_url}")
+            await self.page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
+            await self.page.wait_for_timeout(3000)
+            
+            # File input selector
+            file_input_selector = 'input#attachCV'
+            await self.page.wait_for_selector(file_input_selector, state='attached', timeout=10000)
+            
+            logger.info(f"Uploading resume from {resume_path}...")
+            await self.page.set_input_files(file_input_selector, resume_path)
+            
+            # Wait for upload to complete
+            await self.page.wait_for_timeout(5000)
+            
+            logger.info("✅ Resume re-uploaded successfully!")
+            return True
+            
+        except PlaywrightTimeoutError as e:
+            logger.error(f"Timeout while interacting with profile resume fields: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to update resume: {e}")
+            return False
 
     async def apply_to_recommended_jobs(self, max_jobs: int = 5, use_bulk_select: bool = True, review_mode: Optional[bool] = None) -> dict:
         """
@@ -394,7 +452,7 @@ class NaukriJobApply:
             'external_jobs': [],  # Track jobs that redirect to external sites
             'details': [],
             'selector_validation': None,
-            'bulk_select_results': None
+            'bulk_select_results': []
         }
         
         try:
@@ -415,318 +473,353 @@ class NaukriJobApply:
                     logger.warning(f"Could not read profile update tracking file: {e}")
                     
             if should_update:
-                logger.info("Step 0: Updating profile last working day (current date + 60 days)...")
+                logger.info("Step 0: Updating profile last working day (current date + 60 days) and re-uploading Resume...")
                 lwd_success = await self.update_last_working_day(days_offset=60)
                 if not lwd_success:
                     logger.warning("⚠️ Failed to update profile last working day. Proceeding with application flow anyway.")
                 else:
                     logger.info("✅ Profile last working day updated successfully.")
-                    try:
-                        update_track_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(update_track_file, 'w', encoding='utf-8') as f:
-                            json.dump({"last_naukri_lwd_update": today_str}, f)
-                    except Exception as e:
-                        logger.warning(f"Could not write profile update tracking file: {e}")
+                    
+                resume_success = await self.update_resume()
+                if not resume_success:
+                    logger.warning("⚠️ Failed to re-upload resume.")
+                
+                try:
+                    update_track_file.parent.mkdir(parents=True, exist_ok=True)
+                    with open(update_track_file, 'w', encoding='utf-8') as f:
+                        json.dump({"last_naukri_lwd_update": today_str}, f)
+                except Exception as e:
+                    logger.warning(f"Could not write profile update tracking file: {e}")
             else:
                 lwd_success = True
 
-            # Navigate to recommended jobs page
-            logger.info(f"Navigating to: {self.RECOMMENDED_JOBS_URL}")
-            await self.page.goto(self.RECOMMENDED_JOBS_URL, wait_until='domcontentloaded', timeout=60000)
-            logger.info("Page loaded. Waiting for job cards to be visible...")
-            await self.page.wait_for_selector(self.SELECTORS['job_cards'], timeout=30000)
-            
-            # Validate selectors on recommended jobs page
-            if self.selector_validator:
-                logger.info("\n🔍 Validating selectors on recommended jobs page...")
-                await self.selector_validator.validate_all_selectors()
-                self.selector_validator.print_summary()
-                self.selector_validation_report = self.selector_validator.export_report()
-                results['selector_validation'] = self.selector_validation_report
-                logger.info(f"✅ Selector validation report saved: {self.selector_validation_report}\n")
-            
-            # Get all job cards
-            logger.info("Fetching job listings...")
-            job_cards = await self.page.query_selector_all(self.SELECTORS['job_cards'])
-            logger.info(f"Found {len(job_cards)} job cards on the page")
-            
-            if not job_cards:
-                logger.warning("No job cards found on the page.")
-                return results
 
-            if use_bulk_select:
-                # Phase 2: Bulk select mode
-                logger.info("\n" + "="*70)
-                logger.info("🔄 PHASE 2: Bulk Select Mode")
-                logger.info("="*70)
+            jobs_processed_total = 0
+            while jobs_processed_total < max_jobs:
+                batch_size = min(5, max_jobs - jobs_processed_total)
+                logger.info(f"\n{'='*70}\n🔄 BATCH START: Processing batch of {batch_size} (Total processed: {jobs_processed_total}/{max_jobs})\n{'='*70}")
+                # Navigate to recommended jobs page
+                logger.info(f"Navigating to: {self.RECOMMENDED_JOBS_URL}")
+                await self.page.goto(self.RECOMMENDED_JOBS_URL, wait_until='domcontentloaded', timeout=60000)
+                logger.info("Page loaded. Waiting for job cards to be visible...")
+                await self.page.wait_for_selector(self.SELECTORS['job_cards'], timeout=30000)
             
-                # Step 1: Select multiple jobs
-                selected_jobs = await self.select_jobs_bulk(max_jobs=max_jobs)
-                results['bulk_select_results'] = selected_jobs
+                # Validate selectors on recommended jobs page
+                if self.selector_validator:
+                    logger.info("\n🔍 Validating selectors on recommended jobs page...")
+                    await self.selector_validator.validate_all_selectors()
+                    self.selector_validator.print_summary()
+                    self.selector_validation_report = self.selector_validator.export_report()
+                    results['selector_validation'] = self.selector_validation_report
+                    logger.info(f"✅ Selector validation report saved: {self.selector_validation_report}\n")
+            
+                # Get all job cards
+                logger.info("Fetching job listings...")
+                job_cards = await self.page.query_selector_all(self.SELECTORS['job_cards'])
+                logger.info(f"Found {len(job_cards)} job cards on the page")
+            
+                if not job_cards:
+                    logger.warning("No job cards found on the page.")
+                    break
+
+                if use_bulk_select:
+                    # Phase 2: Bulk select mode
+                    logger.info("\n" + "="*70)
+                    logger.info("🔄 PHASE 2: Bulk Select Mode")
+                    logger.info("="*70)
+            
+                    # Step 1: Select multiple jobs
+                    selected_jobs = await self.select_jobs_bulk(max_jobs=batch_size)
+                    results.setdefault('bulk_select_results', []).extend(selected_jobs)
                 
-                if not selected_jobs:
-                    logger.warning("⚠️  No jobs selected. Falling back to legacy per-job mode.")
-                    use_bulk_select = False
-                else:
-                    jobs_selected = len(selected_jobs)
-                    logger.info(f"\n✅ Selected {jobs_selected} jobs successfully")
-                    
-                    # Step 2: Click bulk apply button
-                    apply_result = await self.click_bulk_apply_button()
-                    
-                    if apply_result['success']:
-                        logger.info("✅ Bulk apply clicked. Side panel chatbot should appear.")
-
-                        form_filler = NaukriFormFiller(
-                            self.page,
-                            self.vector_db,
-                            confidence_threshold=0.60,
-                            enable_logging=True,
-                            enable_selector_validation=False,
-                            review_mode=effective_review_mode
-                        )
-
-                        panel_appeared = await form_filler.wait_for_side_panel_chatbot(timeout_ms=25000)
-
-                        if not panel_appeared:
-                            logger.warning("⚠️  Chatbot side panel did not appear after Apply")
-                            results['failed'] = jobs_selected
-                            results['total_attempted'] = jobs_selected
-                            current_time = datetime.now().isoformat()
-                            for job in selected_jobs:
-                                results['details'].append({
-                                    'job_title': job['job_title'],
-                                    'company_name': job['company_name'],
-                                    'job_url': job['job_url'],
-                                    'timestamp': current_time,
-                                    'status': 'failed',
-                                    'message': 'Chatbot side panel did not appear'
-                                })
-                        else:
-                            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                            review_log = str(Path('logs') / f'naukri_chatbot_review_{ts}.json')
-
-                            conv = await form_filler.run_chatbot_conversation(
-                                allow_human_input=self.enable_human_fallback,
-                                review_log_path=review_log,
-                            )
-                            results['chatbot_stats'] = conv
-                            results['total_attempted'] = jobs_selected
-
-                            if effective_review_mode:
-                                print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
-                                input("Press Enter after submitting to continue...")
-
-                            # Verify application success using new helper
-                            verification = await form_filler.verify_chatbot_application_success()
-                            
-                            if verification['success']:
-                                results['successful'] = jobs_selected
-                                results['failed'] = 0
-                                status = 'successful'
-                                message = f"Successfully applied. Verification: {verification['message']}"
-                                self.jobs_applied += jobs_selected
-                            else:
-                                results['successful'] = 0
-                                results['failed'] = jobs_selected
-                                status = 'failed'
-                                message = f"Application verification failed. Verification: {verification['message']}"
-                                self.jobs_failed += jobs_selected
-
-                            current_time = datetime.now().isoformat()
-                            for job in selected_jobs:
-                                results['details'].append({
-                                    'job_title': job['job_title'],
-                                    'company_name': job['company_name'],
-                                    'job_url': job['job_url'],
-                                    'timestamp': current_time,
-                                    'status': status,
-                                    'message': message,
-                                    'questions_answered': conv.get('answered', 0)
-                                })
-                            logger.info(
-                                f"✅ Chatbot batch done: success={verification['success']}, "
-                                f"answered={conv['answered']}, review={len(conv['review'])}"
-                            )
+                    if not selected_jobs:
+                        logger.warning("⚠️  No jobs selected. Falling back to legacy per-job mode.")
+                        use_bulk_select = False
                     else:
-                        logger.error(f"❌ Failed to click bulk apply button: {apply_result['errors']}")
-                        results['failed'] = jobs_selected
-                        results['total_attempted'] = jobs_selected
-                        current_time = datetime.now().isoformat()
-                        for job in selected_jobs:
-                            results['details'].append({
-                                    'job_title': job['job_title'],
-                                    'company_name': job['company_name'],
-                                    'job_url': job['job_url'],
-                                    'timestamp': current_time,
-                                    'status': 'failed',
-                                    'message': f"Failed to click bulk apply button: {', '.join(apply_result['errors'])}"
-                            })
-            
-            # Legacy mode: Per-job application
-            if not use_bulk_select:
-                logger.info("\n" + "="*70)
-                logger.info("📋 Legacy Mode: Per-Job Application")
-                logger.info("="*70)
-                
-                # Limit to max_jobs
-                jobs_to_apply = min(len(job_cards), max_jobs)
-                logger.info(f"Will attempt to apply to {jobs_to_apply} jobs")
-                
-                # Process each job individually (original logic)
-                for idx, job_card in enumerate(job_cards[:jobs_to_apply], 1):
-                    try:
-                        # Close any popups that might be blocking
-                        await self._close_popups()
-                        
-                        # Try to scroll the job card into view
-                        await job_card.scroll_into_view_if_needed()
-                        await asyncio.sleep(0.5)
-                        
-                        # Extract job information
-                        job_title = await self._extract_text(job_card, self.SELECTORS['job_card_title'])
-                        
-                        company_name = "Unknown Company"
-                        company_elem = await job_card.query_selector('.companyName, [data-qa="companyName"], [data-qa="jobCardCompanyName"], [class*="company"]')
-                        if company_elem:
-                            raw_company = (await company_elem.inner_text()).strip()
-                            company_name = raw_company.split('\n')[0].strip()
+                        jobs_selected = len(selected_jobs)
+                        logger.info(f"\n✅ Selected {jobs_selected} jobs successfully")
+                    
+                        # Step 2: Click bulk apply button
+                        apply_result = await self.click_bulk_apply_button()
+                    
+                        if apply_result['success']:
+                            logger.info("✅ Bulk apply clicked. Side panel chatbot should appear.")
+
+                            form_filler = NaukriFormFiller(
+                                self.page,
+                                self.vector_db,
+                                confidence_threshold=0.60,
+                                enable_logging=True,
+                                enable_selector_validation=False,
+                                review_mode=effective_review_mode
+                            )
+
+                            panel_appeared = await form_filler.wait_for_side_panel_chatbot(timeout_ms=25000)
+
+                            if not panel_appeared:
+                                logger.warning("⚠️  Chatbot side panel did not appear after Apply")
+                                results['failed'] += jobs_selected
+                                results['total_attempted'] += jobs_selected
+                                current_time = datetime.now().isoformat()
+                                for job in selected_jobs:
+                                    results['details'].append({
+                                        'job_title': job['job_title'],
+                                        'company_name': job['company_name'],
+                                        'job_url': job['job_url'],
+                                        'timestamp': current_time,
+                                        'status': 'failed',
+                                        'message': 'Chatbot side panel did not appear'
+                                    })
+                            else:
+                                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                review_log = str(Path('logs') / f'naukri_chatbot_review_{ts}.json')
+
+                                conv = await form_filler.run_chatbot_conversation(
+                                    allow_human_input=self.enable_human_fallback,
+                                    review_log_path=review_log,
+                                )
+                                results['chatbot_stats'] = conv
+                                results['total_attempted'] += jobs_selected
+
+                                if effective_review_mode:
+                                    print("\n⏸️  Review Mode Active: Form auto-filled! Please inspect the browser window and click Submit manually.")
+                                    input("Press Enter after submitting to continue...")
+
+                                # Verify application success using new helper
+                                verification = await form_filler.verify_chatbot_application_success()
                             
-                        # Extract job URL from card
-                        job_url = ""
-                        url_elem = await job_card.query_selector('a[href*="/jobs/"], a.title, a[data-qa="jobCardCurrentJobTitle"], a')
-                        if url_elem:
-                            href = await url_elem.get_attribute('href')
-                            if href:
-                                if href.startswith('/'):
-                                    job_url = f"https://www.naukri.com{href}"
+                                if verification['success']:
+                                    results['successful'] += jobs_selected
+                                    pass # already tracking incrementally
+                                    status = 'successful'
+                                    message = f"Successfully applied. Verification: {verification['message']}"
+                                    self.jobs_applied += jobs_selected
                                 else:
-                                    job_url = href
-                                    
-                        logger.info(f"\n[{idx}/{jobs_to_apply}] Processing job: {job_title} at {company_name}")
-                        
-                        # Log selector usage
-                        if self.selector_validator:
-                            await self.selector_validator.log_selector_usage(
-                                'job_card_title', 
-                                self.SELECTORS['job_card_title']
-                            )
-                        
-                        # Click on the job card to load details
-                        async with self.page.context.expect_page() as new_page_info:
-                            await job_card.click()
-                        
-                        new_page = await new_page_info.value
-                        await new_page.wait_for_load_state('domcontentloaded')
-                        
-                        # Get job URL to pass to form filler
-                        final_job_url = new_page.url or job_url
-                        logger.debug(f"Job URL: {final_job_url}")
-                        
-                        # Check if job redirected to external site
-                        if "naukri.com" not in new_page.url:
-                            logger.warning(f"⚠️  Job redirects to external site: {new_page.url}")
-                            results['external_redirects'] += 1
-                            results['skipped'] += 1
-                            results['external_jobs'].append({
-                                'job_title': job_title,
-                                'redirect_url': new_page.url,
-                                'timestamp': datetime.now().isoformat()
-                            })
-                            results['details'].append({
-                                'job_title': job_title,
-                                'company_name': company_name,
-                                'job_url': final_job_url,
-                                'timestamp': datetime.now().isoformat(),
-                                'status': 'skipped',
-                                'message': f'External redirect: {new_page.url}'
-                            })
-                            results['total_attempted'] += 1
-                            continue
-                        
-                        # Try to find apply button with retry logic
-                        apply_button = None
-                        
+                                    pass # already tracking incrementally
+                                    results['failed'] += jobs_selected
+                                    status = 'failed'
+                                    message = f"Application verification failed. Verification: {verification['message']}"
+                                    self.jobs_failed += jobs_selected
+
+                                current_time = datetime.now().isoformat()
+                                for job in selected_jobs:
+                                    results['details'].append({
+                                        'job_title': job['job_title'],
+                                        'company_name': job['company_name'],
+                                        'job_url': job['job_url'],
+                                        'timestamp': current_time,
+                                        'status': status,
+                                        'message': message,
+                                        'questions_answered': conv.get('answered', 0)
+                                    })
+                                logger.info(
+                                    f"✅ Chatbot batch done: success={verification['success']}, "
+                                    f"answered={conv['answered']}, review={len(conv['review'])}"
+                                )
+                        else:
+                            logger.error(f"❌ Failed to click bulk apply button: {apply_result['errors']}")
+                            results['failed'] += jobs_selected
+                            results['total_attempted'] += jobs_selected
+                            current_time = datetime.now().isoformat()
+                            for job in selected_jobs:
+                                results['details'].append({
+                                        'job_title': job['job_title'],
+                                        'company_name': job['company_name'],
+                                        'job_url': job['job_url'],
+                                        'timestamp': current_time,
+                                        'status': 'failed',
+                                        'message': f"Failed to click bulk apply button: {', '.join(apply_result['errors'])}"
+                                })
+            
+                # Legacy mode: Per-job application
+                if not use_bulk_select:
+                    logger.info("\n" + "="*70)
+                    logger.info("📋 Legacy Mode: Per-Job Application")
+                    logger.info("="*70)
+                
+                    # Limit to max_jobs
+                    jobs_to_apply = min(len(job_cards), batch_size)
+                    logger.info(f"Will attempt to apply to {jobs_to_apply} jobs")
+                
+                    # Process each job individually (original logic)
+                    jobs_attempted_in_legacy = 0
+                    for idx, job_card in enumerate(job_cards, 1):
+                        if jobs_attempted_in_legacy >= batch_size:
+                            break
                         try:
-                            # Wait up to 15 seconds for Javascript to render the button on the new tab
-                            apply_button = await new_page.wait_for_selector(self.SELECTORS['apply_button'], timeout=15000)
-                        except Exception as e:
-                            logger.debug(f"Apply button did not render within timeout: {e}")
+                            # Close any popups that might be blocking
+                            await self._close_popups()
                         
-                        # Log selector usage
-                        if self.selector_validator:
-                            await self.selector_validator.log_selector_usage(
-                                'apply_button', 
-                                self.SELECTORS['apply_button']
-                            )
+                            # Try to scroll the job card into view
+                            await job_card.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.5)
                         
-                        if apply_button:
-                            # Check if button is enabled and visible
-                            is_visible = await apply_button.is_visible()
-                            is_enabled = await apply_button.is_enabled()
+                            # Extract job information
+                            job_title = await self._extract_text(job_card, self.SELECTORS['job_card_title'])
+                        
+                            company_name = "Unknown Company"
+                            company_elem = await job_card.query_selector('.companyName, [data-qa="companyName"], [data-qa="jobCardCompanyName"], [class*="company"]')
+                            if company_elem:
+                                raw_company = (await company_elem.inner_text()).strip()
+                                company_name = raw_company.split('\n')[0].strip()
                             
-                            logger.info(f"Apply button state: Visible={is_visible}, Enabled={is_enabled}")
-                            
-                            if not is_visible:
-                                logger.debug("Scrolling apply button into view...")
-                                await apply_button.scroll_into_view_if_needed()
-                                await asyncio.sleep(1)
+                            # Extract job URL from card
+                            job_url = ""
+                            url_elem = await job_card.query_selector('a[href*="/jobs/"], a.title, a[data-qa="jobCardCurrentJobTitle"], a')
+                            if url_elem:
+                                href = await url_elem.get_attribute('href')
+                                if href:
+                                    if href.startswith('/'):
+                                        job_url = f"https://www.naukri.com{href}"
+                                    else:
+                                        job_url = href
+                                    
+                            # Skip if already attempted in this session
+                            if job_url and job_url in self.applied_job_ids:
+                                logger.info(f"      ⏭️  Skipping already attempted job: {job_title}")
+                                continue
+                                
+                            if job_url:
+                                self.applied_job_ids.add(job_url)
+                                    
+                            jobs_attempted_in_legacy += 1
+                            logger.info(f"\n[{idx}/{batch_size}] Processing job: {job_title} at {company_name}")
                         
-                            if is_enabled:
-                                try:
-                                    logger.info("Clicking apply button...")
-                                    await apply_button.click()
-                                    await asyncio.sleep(3)  # Wait for form to appear (increased from 2)
-                                    
-                                    # Initialize form filler
-                                    form_filler = NaukriFormFiller(
-                                        new_page,
-                                        self.vector_db,
-                                        confidence_threshold=0.70,
-                                        enable_logging=False,
-                                        enable_selector_validation=False,
-                                        review_mode=effective_review_mode
-                                    )
-                                    
+                            # Log selector usage
+                            if self.selector_validator:
+                                await self.selector_validator.log_selector_usage(
+                                    'job_card_title', 
+                                    self.SELECTORS['job_card_title']
+                                )
+                        
+                            # Click on the job card to load details
+                            async with self.page.context.expect_page() as new_page_info:
+                                await job_card.click()
+                        
+                            new_page = await new_page_info.value
+                            await new_page.wait_for_load_state('domcontentloaded')
+                        
+                            # Get job URL to pass to form filler
+                            final_job_url = new_page.url or job_url
+                            logger.debug(f"Job URL: {final_job_url}")
+                        
+                            # Check if job redirected to external site
+                            if "naukri.com" not in new_page.url:
+                                logger.warning(f"⚠️  Job redirects to external site: {new_page.url}")
+                                results['external_redirects'] += 1
+                                results['skipped'] += 1
+                                results['external_jobs'].append({
+                                    'job_title': job_title,
+                                    'redirect_url': new_page.url,
+                                    'timestamp': datetime.now().isoformat()
+                                })
+                                results['details'].append({
+                                    'job_title': job_title,
+                                    'company_name': company_name,
+                                    'job_url': final_job_url,
+                                    'timestamp': datetime.now().isoformat(),
+                                    'status': 'skipped',
+                                    'message': f'External redirect: {new_page.url}'
+                                })
+                                results['total_attempted'] += 1
+                                continue
+                        
+                            # Try to find apply button with retry logic
+                            apply_button = None
+                        
+                            try:
+                                # Wait up to 15 seconds for Javascript to render the button on the new tab
+                                apply_button = await new_page.wait_for_selector(self.SELECTORS['apply_button'], timeout=15000)
+                            except Exception as e:
+                                logger.debug(f"Apply button did not render within timeout: {e}")
+                        
+                            # Log selector usage
+                            if self.selector_validator:
+                                await self.selector_validator.log_selector_usage(
+                                    'apply_button', 
+                                    self.SELECTORS['apply_button']
+                                )
+                        
+                            if apply_button:
+                                # Check if button is enabled and visible
+                                is_visible = await apply_button.is_visible()
+                                is_enabled = await apply_button.is_enabled()
+                            
+                                logger.info(f"Apply button state: Visible={is_visible}, Enabled={is_enabled}")
+                            
+                                if not is_visible:
+                                    logger.debug("Scrolling apply button into view...")
+                                    await apply_button.scroll_into_view_if_needed()
+                                    await asyncio.sleep(1)
+                        
+                                if is_enabled:
                                     try:
-                                        # Fill the form automatically
-                                        logger.info("Auto-filling form with semantic matching...")
-                                        session = await form_filler.fill_naukri_job_application(
-                                            job_url=new_page.url,
-                                            max_questions=None,
-                                            dry_run=False,
-                                            allow_human_input=self.enable_human_fallback,  # Allow human intervention
-                                            submit_form=not effective_review_mode,  # Auto-submit if not in review mode
-                                            navigate=False,  # We are already on the page and have clicked apply
+                                        logger.info("Clicking apply button...")
+                                        await apply_button.click()
+                                        await asyncio.sleep(3)  # Wait for form to appear (increased from 2)
+                                    
+                                        # Initialize form filler
+                                        form_filler = NaukriFormFiller(
+                                            new_page,
+                                            self.vector_db,
+                                            confidence_threshold=0.70,
+                                            enable_logging=False,
+                                            enable_selector_validation=False,
                                             review_mode=effective_review_mode
                                         )
+                                    
+                                        try:
+                                            # Fill the form automatically
+                                            logger.info("Auto-filling form with semantic matching...")
+                                            session = await form_filler.fill_naukri_job_application(
+                                                job_url=new_page.url,
+                                                max_questions=None,
+                                                dry_run=False,
+                                                allow_human_input=self.enable_human_fallback,  # Allow human intervention
+                                                submit_form=not effective_review_mode,  # Auto-submit if not in review mode
+                                                navigate=False,  # We are already on the page and have clicked apply
+                                                review_mode=effective_review_mode
+                                            )
                                         
-                                        if session.status == "completed":
-                                            logger.info(f"✅ Successfully applied to: {job_title}")
-                                            results['successful'] += 1
-                                            results['details'].append({
-                                                'job_title': job_title,
-                                                'company_name': company_name,
-                                                'job_url': final_job_url,
-                                                'timestamp': datetime.now().isoformat(),
-                                                'status': 'successful',
-                                                'message': 'Form filled and submitted'
-                                            })
-                                            self.jobs_applied += 1
-                                        elif session.status == "partial":
-                                            logger.info(f"⚠️ Partially filled form for: {job_title}")
-                                            results['successful'] += 1
-                                            results['details'].append({
-                                                'job_title': job_title,
-                                                'company_name': company_name,
-                                                'job_url': final_job_url,
-                                                'timestamp': datetime.now().isoformat(),
-                                                'status': 'successful',
-                                                'message': 'Some fields were filled'
-                                            })
-                                            self.jobs_applied += 1
-                                        else:
-                                            logger.warning(f"❌ Failed to apply to: {job_title} - {session.error_message}")
+                                            if session.status == "completed":
+                                                logger.info(f"✅ Successfully applied to: {job_title}")
+                                                results['successful'] += 1
+                                                results['details'].append({
+                                                    'job_title': job_title,
+                                                    'company_name': company_name,
+                                                    'job_url': final_job_url,
+                                                    'timestamp': datetime.now().isoformat(),
+                                                    'status': 'successful',
+                                                    'message': 'Form filled and submitted'
+                                                })
+                                                self.jobs_applied += 1
+                                            elif session.status == "partial":
+                                                logger.info(f"⚠️ Partially filled form for: {job_title}")
+                                                results['successful'] += 1
+                                                results['details'].append({
+                                                    'job_title': job_title,
+                                                    'company_name': company_name,
+                                                    'job_url': final_job_url,
+                                                    'timestamp': datetime.now().isoformat(),
+                                                    'status': 'successful',
+                                                    'message': 'Some fields were filled'
+                                                })
+                                                self.jobs_applied += 1
+                                            else:
+                                                logger.warning(f"❌ Failed to apply to: {job_title} - {session.error_message}")
+                                                results['failed'] += 1
+                                                results['details'].append({
+                                                    'job_title': job_title,
+                                                    'company_name': company_name,
+                                                    'job_url': final_job_url,
+                                                    'timestamp': datetime.now().isoformat(),
+                                                    'status': 'failed',
+                                                    'message': session.error_message or 'Unknown error'
+                                                })
+                                                self.jobs_failed += 1
+                                    
+                                        except Exception as e:
+                                            logger.error(f"Error filling form for {job_title}: {str(e)}")
                                             results['failed'] += 1
                                             results['details'].append({
                                                 'job_title': job_title,
@@ -734,12 +827,12 @@ class NaukriJobApply:
                                                 'job_url': final_job_url,
                                                 'timestamp': datetime.now().isoformat(),
                                                 'status': 'failed',
-                                                'message': session.error_message or 'Unknown error'
+                                                'message': f'Form filling error: {str(e)}'
                                             })
                                             self.jobs_failed += 1
-                                    
+                                
                                     except Exception as e:
-                                        logger.error(f"Error filling form for {job_title}: {str(e)}")
+                                        logger.error(f"Error clicking apply button for {job_title}: {str(e)}")
                                         results['failed'] += 1
                                         results['details'].append({
                                             'job_title': job_title,
@@ -747,24 +840,22 @@ class NaukriJobApply:
                                             'job_url': final_job_url,
                                             'timestamp': datetime.now().isoformat(),
                                             'status': 'failed',
-                                            'message': f'Form filling error: {str(e)}'
+                                            'message': f'Apply button click error: {str(e)}'
                                         })
                                         self.jobs_failed += 1
-                                
-                                except Exception as e:
-                                    logger.error(f"Error clicking apply button for {job_title}: {str(e)}")
-                                    results['failed'] += 1
+                                else:
+                                    logger.warning(f"⚠️  Apply button is disabled for: {job_title}")
+                                    results['skipped'] += 1
                                     results['details'].append({
                                         'job_title': job_title,
                                         'company_name': company_name,
                                         'job_url': final_job_url,
                                         'timestamp': datetime.now().isoformat(),
-                                        'status': 'failed',
-                                        'message': f'Apply button click error: {str(e)}'
+                                        'status': 'skipped',
+                                        'message': 'Apply button is disabled'
                                     })
-                                    self.jobs_failed += 1
                             else:
-                                logger.warning(f"⚠️  Apply button is disabled for: {job_title}")
+                                logger.warning(f"❌ Apply button not found for: {job_title}")
                                 results['skipped'] += 1
                                 results['details'].append({
                                     'job_title': job_title,
@@ -772,36 +863,39 @@ class NaukriJobApply:
                                     'job_url': final_job_url,
                                     'timestamp': datetime.now().isoformat(),
                                     'status': 'skipped',
-                                    'message': 'Apply button is disabled'
+                                    'message': 'Apply button not available'
                                 })
-                        else:
-                            logger.warning(f"❌ Apply button not found for: {job_title}")
-                            results['skipped'] += 1
-                            results['details'].append({
-                                'job_title': job_title,
-                                'company_name': company_name,
-                                'job_url': final_job_url,
-                                'timestamp': datetime.now().isoformat(),
-                                'status': 'skipped',
-                                'message': 'Apply button not available'
-                            })
                         
-                        results['total_attempted'] += 1
+                            results['total_attempted'] += 1
                     
-                    except Exception as e:
-                        logger.error(f"Error processing job {idx}: {str(e)}")
-                        results['failed'] += 1
-                        results['total_attempted'] += 1
-                        results['details'].append({
-                            'job_title': job_title if 'job_title' in locals() else f'Job {idx}',
-                            'company_name': company_name if 'company_name' in locals() else 'Unknown Company',
-                            'job_url': final_job_url if 'final_job_url' in locals() else (job_url if 'job_url' in locals() else ''),
-                            'timestamp': datetime.now().isoformat(),
-                            'status': 'failed',
-                            'message': str(e)
-                        })
-                        self.jobs_failed += 1
+                        except Exception as e:
+                            logger.error(f"Error processing job {idx}: {str(e)}")
+                            results['failed'] += 1
+                            results['total_attempted'] += 1
+                            results['details'].append({
+                                'job_title': job_title if 'job_title' in locals() else f'Job {idx}',
+                                'company_name': company_name if 'company_name' in locals() else 'Unknown Company',
+                                'job_url': final_job_url if 'final_job_url' in locals() else (job_url if 'job_url' in locals() else ''),
+                                'timestamp': datetime.now().isoformat(),
+                                'status': 'failed',
+                                'message': str(e)
+                            })
+                            self.jobs_failed += 1
             
+
+                # Update total processed to move to the next batch
+                if use_bulk_select:
+                    if selected_jobs:
+                        jobs_processed_total += len(selected_jobs)
+                    else:
+                        logger.warning("No jobs were selected in this batch. Breaking to prevent infinite loop.")
+                        break
+                else:
+                    if jobs_attempted_in_legacy > 0:
+                        jobs_processed_total += jobs_attempted_in_legacy
+                    else:
+                        logger.warning("No jobs to apply in this batch. Breaking to prevent infinite loop.")
+                        break
             # Print summary
             logger.info("\n" + "="*60)
             logger.info("📊 AUTO-APPLY SUMMARY")

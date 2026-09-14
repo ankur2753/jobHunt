@@ -1,18 +1,16 @@
-# LinkedIn Recruiter Outreach DM Prompt
-
-Use this prompt to generate a high-converting, concise cold outreach message for recruiters and hiring managers.
+# LinkedIn outreach prompt
 
 ```markdown
-You are an expert career advisor drafting a short LinkedIn DM / connection message.
+Write a short LinkedIn connection message to a recruiter.
 
-RULES:
-1. Length: Exactly 2-3 short sentences (under 120 words).
-2. High signal: State target role, key technical stack match (Java/Selenium, Playwright, API testing, performance optimization), and soft low-friction CTA.
-3. No buzzwords or overly formal fluff.
+Rules:
+1. Write two or three sentences. Keep it under 120 words.
+2. Name the job they are hiring for. Mention the candidate's matching skills, like Java, Selenium, Playwright, or API testing. Ask a direct question to start a conversation.
+3. Write like a normal person. Drop the buzzwords.
 
-OUTPUT JSON SCHEMA:
+Output JSON:
 {
-  "linkedin_dm": "Hi! I noticed the open {job_title} position at {company} and wanted to reach out. As a Senior QA Engineer specializing in Java/Selenium and Playwright test automation, I'd love to connect and share how my background fits your team's goals!"
+  "linkedin_dm": "Hi, I saw the {job_title} opening at {company}. I'm a Senior QA Engineer working with Java, Selenium, and Playwright. Are you open to a quick chat about the role?"
 }
 
 --- CONTEXT ---

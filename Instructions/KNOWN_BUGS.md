@@ -1,56 +1,52 @@
-# KNOWN BUGS & LIMITATIONS
+# Known bugs and limitations
 
-Related: [[PROJECT_MAP]] | [[ARCHITECTURE]] | [[COMPONENTS]]
+Related links
+- [[PROJECT_MAP]]
+- [[ARCHITECTURE]]
+- [[COMPONENTS]]
 
-> This file tracks active bugs, known limitations, and unimplemented stubs.
-> Update status when a bug is fixed or a feature is implemented.
+This file tracks active bugs, known limitations, and missing features. Update the status when you fix a bug or add a feature.
 
----
+## Critical bugs
 
-## Critical Bugs
+### BUG-001 LinkedIn scraping fails
+**Status** Won't fix
+**Severity** Critical
 
-### BUG-001: LinkedIn Job Scraping & Automation is a Complete Failure
-**Status**: ❌ FAILED (Won't Fix)
-**Severity**: Critical
-**Source**: LinkedIn Anti-Bot Measures
+Cookie login succeeds. Scraping and auto-applying fail every time. LinkedIn's anti-bot measures and CAPTCHAs block Playwright.
 
-**Symptom**: LinkedIn cookie login succeeds, but job scraping and auto-applying consistently fail.
-**Cause**: Aggressive anti-bot measures and CAPTCHAs from LinkedIn block Playwright automation completely.
-**Workaround**: Discontinue automated LinkedIn scraping. The system now completely delegates UI fallback to the user or avoids LinkedIn entirely.
+We stopped automating LinkedIn scraping. The system skips LinkedIn or asks the user to handle it.
 
----
+## Missing features
 
-## Unimplemented Features
+### BUG-002 InstaHyre does nothing
+**Status** Stub
+**Severity** Low
 
-### BUG-002: InstaHyre Entirely Unimplemented
-**Status**: ❌ Stub only
-**Severity**: Low
+Selecting InstaHyre or sending a task through `redis_gateway.py` returns immediately. The script `scripts/cookie_management_login/instahyre_login.py` only handles login. It does not apply or scrape.
 
-**Symptom**: Selecting InstaHyre or sending an InstaHyre task via the `redis_gateway.py` immediately returns without doing anything.
-**Affected Files**:
-- `scripts/cookie_management_login/instahyre_login.py` (login only, no apply/scrape)
+## Known limitations
 
----
+### LIMITATION-001 CustomLLMAgent is slow and expensive
+**Status** Active
+**Severity** Medium
 
-## Known Limitations & Tech Debt
+The `CustomLLMAgent` uses LLM function calling to handle visual fallbacks. It uses `click`, `type_text`, `scroll`, and `ask_user`. This costs more and runs slower than standard Playwright selectors.
 
-### LIMITATION-001: CustomLLMAgent Cost & Latency
-**Status**: ⚠️ Active
-**Severity**: Medium
+The system tries standard scripted interactions first. It only falls back to the agent when a selector fails or a form is too complex.
 
-**Symptom**: The new `CustomLLMAgent` which handles visual fallbacks via Native LLM Function Calling (`click`, `type_text`, `scroll`, `ask_user`) can be slower and more costly than direct Playwright selectors.
-**Mitigation**: The system always attempts standard scripted interactions first and only cascades to the `CustomLLMAgent` when a selector fails or a complex form is encountered.
+### LIMITATION-002 Telegram rate limits
+**Status** Active
+**Severity** Low
 
-### LIMITATION-002: Telegram Rate Limits
-**Status**: ⚠️ Active
-**Severity**: Low
+The `ask_user` tool routes messages through Telegram. Sending too many fallback events triggers API rate limits.
 
-**Symptom**: The `ask_user` tool in `CustomLLMAgent` routes messages to the user via Telegram. High frequency of fallback events may trigger Telegram API rate limits.
-**Mitigation**: Implement throttling in `redis_gateway.py` when dispatching `ask_user` events.
+We need to add throttling in `redis_gateway.py` for `ask_user` events.
 
----
+## Recently fixed
 
-## Recently Resolved (✅ FIXED)
+### Naukri end-to-end
+Auto-apply works. The system handles multi-step forms, NLA popups, and dynamic fields natively or through the `CustomLLMAgent` fallback.
 
-- **Naukri End-to-End**: Auto-apply works completely fine end-to-end. Multi-step forms, NLA popups, and dynamic form fields are now successfully handled natively or via `CustomLLMAgent` fallback. All related bugs have been removed from this tracker.
-- **UI Decoupling**: CLI menus have been replaced; Telegram is now the first-class UI, driven by `redis_gateway.py` and `JobTaskFactory`.
+### UI decoupling
+We removed the CLI menus. Telegram is the primary interface. `redis_gateway.py` and `JobTaskFactory` drive it.

@@ -1,22 +1,20 @@
-# Cover Letter System Prompt (1-Page A4)
-
-Use this prompt to generate a job-specific cover letter that sounds like a real engineer wrote it.
+# Cover letter prompt
 
 ```markdown
-You are an expert technical recruiter and engineering leader writing a cover letter on behalf of an engineer.
+Write a cover letter for this job. Make it sound like an engineer wrote it, not a marketer.
 
-RULES:
-1. Target length: Under 1 page A4 (4 concise, compelling paragraphs).
-2. Tone: Confident, technical, professional, human-engineered (NO generic corporate fluff like "thrilled to apply for this esteemed position").
-3. Connect candidate's 3+ years experience in QA automation, REST/SOAP APIs, parallel Azure VM execution (25% runtime reduction), and microservices to the specific target company and role.
+Rules:
+1. Keep it under one page. Use four short paragraphs.
+2. Cut the fluff. Do not use phrases like "thrilled to apply" or "esteemed position". Be direct.
+3. Link the candidate's three years of QA automation, REST/SOAP APIs, microservices, and Azure VM experience to what this specific company does.
 
-OUTPUT JSON SCHEMA:
+Output JSON:
 {
   "cover_letter_paragraphs": [
     "Dear Hiring Manager,",
-    "I am writing to express my strong interest in the <strong>{job_title}</strong> position at {company}...",
+    "I am applying for the <strong>{job_title}</strong> position at {company}...",
     "In my current role as Senior QA Engineer at SafeSend Technologies...",
-    "I would welcome the opportunity to discuss how my background supports your team. Thank you for your consideration."
+    "I would like to discuss how I can help your team. Thank you."
   ]
 }
 
